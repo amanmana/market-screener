@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
-  TrendingUp, Search, ArrowUpRight, TrendingDown, RefreshCw, 
+  TrendingUp, Search, ArrowUpRight, TrendingDown,
   AlertTriangle, Zap, ChevronDown
 } from 'lucide-react';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
-import { fetchScreener } from './api';
+import { fetchScreener, fetchQuote } from './api';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
@@ -51,16 +51,13 @@ const App = () => {
     } catch (err: any) { 
         console.error('SCAN_ERROR:', err);
         setErrorMsg(err.message || 'Unknown network error');
-        alert('POOOFF! Kenapa gagal?? Ralat: ' + err.message);
     } finally { isScanning.current = false; }
   };
 
   const handleRefreshTicker = async (ticker: string) => {
     setRefreshing(ticker);
     try {
-        const baseUrl = 'http://localhost:8787';
-        const res = await fetch(`${baseUrl}/api/market/quote/${ticker}`);
-        const data = await res.json();
+        const data = await fetchQuote(ticker);
         if (data && !data.error) {
             setSignals(prev => prev.map(s => {
                 if (s.ticker === ticker) {
@@ -82,7 +79,7 @@ const App = () => {
           </div>
       )}
       
-      <div style={{position:'fixed', bottom: 10, right: 10, fontSize: 10, opacity: 0.3, zIndex: 9999}}>v1.5 STABLE</div>
+      <div style={{position:'fixed', bottom: 10, right: 10, fontSize: 10, opacity: 0.3, zIndex: 9999}}>v2.0 · CF Production</div>
       <div className="header">
         <div className="logo-group"><TrendingUp size={24} color="var(--accent-cyan)" /><h1 style={{fontSize: 22}}>MarketWise <span style={{fontWeight: 400, opacity: 0.6}}>Screener</span></h1></div>
         <div className="top-nav">
