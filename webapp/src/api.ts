@@ -1,4 +1,6 @@
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8787/api';
+const API_BASE = import.meta.env.PROD 
+  ? 'https://market-screener.amanmana.workers.dev/api'
+  : (import.meta.env.VITE_API_URL || 'http://localhost:8787/api');
 
 export async function fetchScreener(market: string = 'US', offset: number = 0, limit: number = 200) {
   const url = `${API_BASE}/screener/latest?market=${market}&offset=${offset}&limit=${limit}`;
