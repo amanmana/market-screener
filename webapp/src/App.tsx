@@ -24,6 +24,45 @@ const SIGNAL_RANK: Record<string, number> = {
 const sortBySignal = (arr: any[]) =>
   [...arr].sort((a, b) => (SIGNAL_RANK[a.signal] ?? 9) - (SIGNAL_RANK[b.signal] ?? 9));
 
+// Visual price range bar with L/H labels and current-price marker
+const BuyZoneBar = ({ lo, hi, cur }: { lo: number; hi: number; cur: number }) => {
+  const range = hi - lo;
+  const pct = range > 0 ? Math.max(0, Math.min(100, ((cur - lo) / range) * 100)) : 50;
+  const dec = (v: number) => (v < 1 ? 3 : 2);
+  const inZone = cur >= lo && cur <= hi;
+  return (
+    <div style={{ minWidth: 130, padding: '2px 0' }}>
+      {/* Bar */}
+      <div style={{ position: 'relative', height: 5, borderRadius: 4, background: 'rgba(255,255,255,0.07)', margin: '10px 0 4px' }}>
+        <div style={{
+          position: 'absolute', inset: 0, borderRadius: 4,
+          background: 'linear-gradient(90deg, rgba(74,222,128,0.2), rgba(74,222,128,0.65))'
+        }} />
+        {/* Triangle marker */}
+        <div style={{
+          position: 'absolute',
+          left: `calc(${pct}% - 4px)`,
+          top: -10,
+          fontSize: 10,
+          color: inZone ? '#facc15' : '#f87171',
+          lineHeight: 1,
+          userSelect: 'none',
+          filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.8))'
+        }}>▼</div>
+      </div>
+      {/* L / H */}
+      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)' }}>
+          L <span style={{ color: '#4ade80', fontWeight: 700 }}>{lo.toFixed(dec(lo))}</span>
+        </span>
+        <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)' }}>
+          <span style={{ color: '#86efac', fontWeight: 700 }}>{hi.toFixed(dec(hi))}</span> H
+        </span>
+      </div>
+    </div>
+  );
+};
+
 const App = () => {
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const [signals, setSignals] = useState<any[]>([]);
@@ -319,21 +358,11 @@ const App = () => {
                       <td><div style={{display:'flex',alignItems:'center',gap:6}}><span className={`signal-badge signal-${s.signal.split('-')[0]}`}>{s.signal}</span>{s.isCaution && <AlertTriangle size={14} color="#FFD700" />}</div></td>
                       <td style={{fontWeight:600, color: s.isLive ? '#00FF41' : 'inherit'}}>{activeMarket==='US'?'$':'RM'} {s.price?.toFixed(s.price<1?3:2)}</td>
                       <td style={{fontSize:11, opacity: 0.75, lineHeight: 1.5}}>{s.reason}</td>
-                      <td>
-                        {['BUY-T','BUY-R','REBUY'].includes(s.signal) && s.entryRangeLow && s.entryRangeHigh ? (
-                          <div style={{fontSize:11, lineHeight: 1.6}}>
-                            <div style={{color:'rgba(255,255,255,0.4)', fontSize:10, marginBottom:2}}>Entry Zone</div>
-                            <div style={{color:'#4ade80', fontWeight:700}}>
-                              {activeMarket==='US'?'$':'RM'} {Number(s.entryRangeLow).toFixed(s.entryRangeLow<1?3:2)}
-                            </div>
-                            <div style={{color:'rgba(255,255,255,0.3)', fontSize:10}}>──────</div>
-                            <div style={{color:'#86efac', fontWeight:600}}>
-                              {activeMarket==='US'?'$':'RM'} {Number(s.entryRangeHigh).toFixed(s.entryRangeHigh<1?3:2)}
-                            </div>
-                          </div>
-                        ) : (
-                          <span style={{opacity:0.2, fontSize:12}}>—</span>
-                        )}
+                      <td style={{paddingRight: 8}}>
+                        {['BUY-T','BUY-R','REBUY'].includes(s.signal) && s.entryRangeLow && s.entryRangeHigh
+                          ? <BuyZoneBar lo={Number(s.entryRangeLow)} hi={Number(s.entryRangeHigh)} cur={s.price || 0} />
+                          : <span style={{opacity:0.2, fontSize:12}}>—</span>
+                        }
                       </td>
                       <td style={{textAlign:'center'}}>
                         <a
