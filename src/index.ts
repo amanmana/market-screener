@@ -219,6 +219,64 @@ export default {
         });
       }
 
+      // ROUTE: Add to Portfolio
+      if (url.pathname === '/api/portfolio/add' && request.method === 'POST') {
+        const payload: any = await request.json();
+        
+        // Prevent generic duplicate tickers 
+        const existing = await env.DB.prepare(`SELECT id FROM swing_portfolio WHERE ticker = ?`).bind(payload.ticker).first();
+        if (existing) {
+          // Update the existing row
+          await env.DB.prepare(
+             `UPDATE swing_portfolio SET entry_price=?, target_price=?, stop_loss=?, status='OPEN' WHERE ticker=?`
+          ).bind(
+            payload.entry_price ?? null, 
+            payload.target_price ?? null, 
+            payload.stop_loss ?? null, 
+            payload.ticker
+          ).run();
+        } else {
+          // Insert a new row
+          await env.DB.prepare(
+            `INSERT INTO swing_portfolio (ticker, name, entry_price, target_price, stop_loss, status) 
+             VALUES (?, ?, ?, ?, ?, ?)`
+          ).bind(
+            payload.ticker, 
+            payload.name ?? '', 
+            payload.entry_price ?? null, 
+            payload.target_price ?? null, 
+            payload.stop_loss ?? null, 
+            'OPEN'
+          ).run();
+        }
+
+        return new Response(JSON.stringify({ success: true }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      // ROUTE: Remove from Portfolio
+      if (url.pathname === '/api/portfolio/remove' && request.method === 'POST') {
+        const payload: any = await request.json();
+        
+        await env.DB.prepare(`DELETE FROM swing_portfolio WHERE ticker = ?`).bind(payload.ticker).run();
+        
+        return new Response(JSON.stringify({ success: true }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      // ROUTE: List Portfolio
+      if (url.pathname === '/api/portfolio/list') {
+        const { results } = await env.DB.prepare(
+          `SELECT * FROM swing_portfolio ORDER BY entry_date DESC`
+        ).all();
+
+        return new Response(JSON.stringify({ results }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
       return new Response('Not Found', { status: 404, headers: corsHeaders });
 
     } catch (err: any) {

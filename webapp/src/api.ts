@@ -19,3 +19,29 @@ export async function fetchQuote(ticker: string) {
   if (!res.ok) throw new Error('Quote fetch failed');
   return res.json();
 }
+
+export async function addToPortfolio(payload: any) {
+  const res = await fetch(`${API_BASE}/portfolio/add`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) throw new Error(`Add failed: ${res.status}`);
+  return res.json();
+}
+
+export async function removeFromPortfolio(ticker: string) {
+  const res = await fetch(`${API_BASE}/portfolio/remove`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ticker })
+  });
+  if (!res.ok) throw new Error(`Remove failed: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchPortfolio() {
+  const res = await fetch(`${API_BASE}/portfolio/list`);
+  if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
+  return res.json();
+}

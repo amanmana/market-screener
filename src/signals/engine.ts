@@ -70,11 +70,16 @@ export async function getLatestSignal(candles: Candle[]): Promise<SignalResult> 
         if (currentPrice < signal.entryRangeLow) signal.entryRangeLow = Number(currentPrice.toFixed(3));
 
       } else if (signal.type === SignalType.SWING) {
-        // SWING: SMA50 entry zone (mid-term focus)
+        // SWING: Dynamic target based on Resistance (40-day High)
+        const recent40High = Math.max(...highs.slice(-40));
+        
+        // Target: 1 bit (approx 0.5% buffer) below 40-day peak
+        // This is much more realistic than fixed 10%
         signal.entryRangeLow  = Number(sma50.toFixed(3));
         signal.entryRangeHigh = Number((sma50 * 1.04).toFixed(3));
-        signal.btstTarget = Number((currentPrice * 1.10).toFixed(3)); // TP +10% target for swing
-        signal.stopLoss = Number((currentPrice * 0.965).toFixed(3)); // 3.5% SL
+        signal.btstTarget = Number((recent40High * 0.995).toFixed(3)); 
+        // Stop Loss: 1 bit (0.5% buffer) below SMA50 Support
+        signal.stopLoss = Number((sma50 * 0.995).toFixed(3)); 
 
       } else {
         // Fallback for any other buy signals
