@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { 
   TrendingUp, Search, ArrowUpRight, TrendingDown,
-  AlertTriangle, Zap, ChevronDown, Play, Square, RotateCcw
+  AlertTriangle, Zap, Play, Square, RotateCcw
 } from 'lucide-react';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
 import { fetchScreener, fetchQuote } from './api';
@@ -188,7 +188,6 @@ const App = () => {
         </div>
         <div style={{display:'flex', gap:'20px', alignItems:'center'}}>
           <div className="search-box"><Search size={18} /><input type="text" placeholder="Cari kaunter..." /></div>
-          <div className="user-pill"><img src="https://i.pravatar.cc/150?u=ak" style={{width: 28, height: 28, borderRadius: '50%'}} alt="user" /><span>Akhmal K. <ChevronDown size={14} /></span></div>
         </div>
       </div>
 
@@ -303,11 +302,12 @@ const App = () => {
             <table>
               <thead>
                 <tr>
-                  <th style={{width:'20%'}}>SYMBOL</th>
-                  <th style={{width:'15%'}}>SIGNAL</th>
-                  <th style={{width:'15%'}}>PRICE</th>
-                  <th style={{width:'45%'}}>DETAILED ANALYSIS</th>
-                  <th style={{width:'5%'}}></th>
+                  <th style={{width:'18%'}}>SYMBOL</th>
+                  <th style={{width:'13%'}}>SIGNAL</th>
+                  <th style={{width:'13%'}}>PRICE</th>
+                  <th style={{width:'42%'}}>DETAILED ANALYSIS</th>
+                  <th style={{width:'7%', textAlign:'center'}}>CHART</th>
+                  <th style={{width:'7%'}}></th>
                 </tr>
               </thead>
               <tbody>
@@ -318,11 +318,34 @@ const App = () => {
                       <td><div style={{display:'flex',alignItems:'center',gap:6}}><span className={`signal-badge signal-${s.signal.split('-')[0]}`}>{s.signal}</span>{s.isCaution && <AlertTriangle size={14} color="#FFD700" />}</div></td>
                       <td style={{fontWeight:600, color: s.isLive ? '#00FF41' : 'inherit'}}>{activeMarket==='US'?'$':'RM'} {s.price?.toFixed(s.price<1?3:2)}</td>
                       <td style={{fontSize:12, opacity: 0.8, lineHeight: 1.5}}>{s.reason}</td>
+                      <td style={{textAlign:'center'}}>
+                        <a
+                          href={activeMarket === 'MYR'
+                            ? `https://www.tradingview.com/chart/?symbol=MYX:${s.ticker.replace('.KL','')}`
+                            : `https://www.tradingview.com/chart/?symbol=${s.ticker}`
+                          }
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Buka di TradingView"
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            width: 30, height: 30, borderRadius: 8,
+                            background: 'rgba(37,99,235,0.15)',
+                            border: '1px solid rgba(37,99,235,0.4)',
+                            color: '#3b82f6',
+                            textDecoration: 'none',
+                            fontSize: 11, fontWeight: 700,
+                            transition: 'all 0.2s',
+                          }}
+                          onMouseOver={e => (e.currentTarget.style.background = 'rgba(37,99,235,0.35)')}
+                          onMouseOut={e => (e.currentTarget.style.background = 'rgba(37,99,235,0.15)')}
+                        >TV</a>
+                      </td>
                       <td><button className="icon-btn-refresh" onClick={() => handleRefreshTicker(s.ticker)} disabled={refreshing === s.ticker}><Zap size={16} className={refreshing === s.ticker ? 'loading-spinner' : ''} /></button></td>
                     </tr>
                   ))
                 ) : (
-                  <tr><td colSpan={5} style={{textAlign:'center', padding: 80, opacity: 0.3}}>
+                  <tr><td colSpan={6} style={{textAlign:'center', padding: 80, opacity: 0.3}}>
                     {isAutoScanning ? '⏳ Mengimbas...' : 'Klik Auto Scan untuk imbas semua kaunter secara automatik'}
                   </td></tr>
                 )}
