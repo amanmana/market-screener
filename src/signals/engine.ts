@@ -40,18 +40,43 @@ export async function getLatestSignal(candles: Candle[]): Promise<SignalResult> 
     
     if (isBuySignal) {
       const closes = candles.map(c => c.close);
-      const sma20 = closes.slice(-20).reduce((a, b) => a + b, 0) / 20;
+      const highs  = candles.map(c => c.high);
+      const lows   = candles.map(c => c.low);
       
-      signal.entryRangeLow = Number((sma20 * 1.01).toFixed(3));
-      signal.entryRangeHigh = signal.price;
-      signal.isCaution = isWickRejection || isHighGap;
+      const sma10 = closes.slice(-10).reduce((a, b) => a + b, 0) / 10;
+      const sma20 = closes.slice(-20).reduce((a, b) => a + b, 0) / 20;
+      const recent5Low  = Math.min(...lows.slice(-5));
+      const recent10Low = Math.min(...lows.slice(-10));
+      const currentPrice = signal.price || current.close;
 
-      if (signal.isCaution) {
-        signal.reason = `⚠️ CAUTION: Selling Pressure detected. ` + (signal.reason || "");
+      if (signal.type === SignalType.BUY_T) {
+        // BUY-T: Trend naik — masuk berhampiran SMA10 support
+        // Zone: SMA10 → SMA10 × 1.03 (boleh masuk sekarang atau tunggu minor pullback)
+        signal.entryRangeLow  = Number(sma10.toFixed(3));
+        signal.entryRangeHigh = Number((sma10 * 1.03).toFixed(3));
+        if (signal.entryRangeHigh > currentPrice * 1.01) signal.entryRangeHigh = Number(currentPrice.toFixed(3));
+
+      } else if (signal.type === SignalType.BUY_R) {
+        // BUY-R: Pembalikan — masuk di kawasan oversold antara recent low dan SMA20
+        signal.entryRangeLow  = Number(recent5Low.toFixed(3));
+        signal.entryRangeHigh = Number(Math.min(sma20, currentPrice).toFixed(3));
+        if (signal.entryRangeLow >= signal.entryRangeHigh) {
+          signal.entryRangeLow = Number((signal.entryRangeHigh * 0.97).toFixed(3));
+        }
+
+      } else {
+        // REBUY: Tambah posisi — masuk semasa pullback ke SMA20
+        // Zone: recent 10-day low → SMA10 (kawasan terbaik untuk tambah)
+        signal.entryRangeLow  = Number(Math.max(recent10Low, sma20 * 0.98).toFixed(3));
+        signal.entryRangeHigh = Number(sma10.toFixed(3));
+        if (signal.entryRangeLow >= signal.entryRangeHigh) {
+          signal.entryRangeLow = Number((signal.entryRangeHigh * 0.97).toFixed(3));
+        }
       }
 
-      if (signal.entryRangeLow > (signal.price || 0)) {
-        signal.entryRangeLow = Number(((signal.price || 0) * 0.97).toFixed(3));
+      signal.isCaution = isWickRejection || isHighGap;
+      if (signal.isCaution) {
+        signal.reason = `⚠️ CAUTION: Selling Pressure detected. ` + (signal.reason || "");
       }
     }
     return signal;

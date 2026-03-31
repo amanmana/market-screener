@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { 
   TrendingUp, Search, ArrowUpRight, TrendingDown,
-  AlertTriangle, Zap, Play, Square, RotateCcw
+  AlertTriangle, Zap, Play, Square, RotateCcw, LineChart
 } from 'lucide-react';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
 import { fetchScreener, fetchQuote } from './api';
@@ -302,12 +302,13 @@ const App = () => {
             <table>
               <thead>
                 <tr>
-                  <th style={{width:'18%'}}>SYMBOL</th>
-                  <th style={{width:'13%'}}>SIGNAL</th>
-                  <th style={{width:'13%'}}>PRICE</th>
-                  <th style={{width:'42%'}}>DETAILED ANALYSIS</th>
+                  <th style={{width:'16%'}}>SYMBOL</th>
+                  <th style={{width:'12%'}}>SIGNAL</th>
+                  <th style={{width:'11%'}}>PRICE</th>
+                  <th style={{width:'30%'}}>ANALYSIS</th>
+                  <th style={{width:'18%'}}>BUY ZONE</th>
                   <th style={{width:'7%', textAlign:'center'}}>CHART</th>
-                  <th style={{width:'7%'}}></th>
+                  <th style={{width:'6%'}}></th>
                 </tr>
               </thead>
               <tbody>
@@ -317,7 +318,23 @@ const App = () => {
                       <td><div className="symbol-cell"><div className="symbol-icon">{s.ticker[0]}</div><div style={{display:'flex',flexDirection:'column'}}><strong>{s.ticker}</strong><span style={{fontSize:11,opacity:0.6}}>{s.name}</span></div></div></td>
                       <td><div style={{display:'flex',alignItems:'center',gap:6}}><span className={`signal-badge signal-${s.signal.split('-')[0]}`}>{s.signal}</span>{s.isCaution && <AlertTriangle size={14} color="#FFD700" />}</div></td>
                       <td style={{fontWeight:600, color: s.isLive ? '#00FF41' : 'inherit'}}>{activeMarket==='US'?'$':'RM'} {s.price?.toFixed(s.price<1?3:2)}</td>
-                      <td style={{fontSize:12, opacity: 0.8, lineHeight: 1.5}}>{s.reason}</td>
+                      <td style={{fontSize:11, opacity: 0.75, lineHeight: 1.5}}>{s.reason}</td>
+                      <td>
+                        {['BUY-T','BUY-R','REBUY'].includes(s.signal) && s.entryRangeLow && s.entryRangeHigh ? (
+                          <div style={{fontSize:11, lineHeight: 1.6}}>
+                            <div style={{color:'rgba(255,255,255,0.4)', fontSize:10, marginBottom:2}}>Entry Zone</div>
+                            <div style={{color:'#4ade80', fontWeight:700}}>
+                              {activeMarket==='US'?'$':'RM'} {Number(s.entryRangeLow).toFixed(s.entryRangeLow<1?3:2)}
+                            </div>
+                            <div style={{color:'rgba(255,255,255,0.3)', fontSize:10}}>──────</div>
+                            <div style={{color:'#86efac', fontWeight:600}}>
+                              {activeMarket==='US'?'$':'RM'} {Number(s.entryRangeHigh).toFixed(s.entryRangeHigh<1?3:2)}
+                            </div>
+                          </div>
+                        ) : (
+                          <span style={{opacity:0.2, fontSize:12}}>—</span>
+                        )}
+                      </td>
                       <td style={{textAlign:'center'}}>
                         <a
                           href={activeMarket === 'MYR'
@@ -339,13 +356,13 @@ const App = () => {
                           }}
                           onMouseOver={e => (e.currentTarget.style.background = 'rgba(37,99,235,0.35)')}
                           onMouseOut={e => (e.currentTarget.style.background = 'rgba(37,99,235,0.15)')}
-                        >TV</a>
+                        ><LineChart size={15} /></a>
                       </td>
                       <td><button className="icon-btn-refresh" onClick={() => handleRefreshTicker(s.ticker)} disabled={refreshing === s.ticker}><Zap size={16} className={refreshing === s.ticker ? 'loading-spinner' : ''} /></button></td>
                     </tr>
                   ))
                 ) : (
-                  <tr><td colSpan={6} style={{textAlign:'center', padding: 80, opacity: 0.3}}>
+                  <tr><td colSpan={7} style={{textAlign:'center', padding: 80, opacity: 0.3}}>
                     {isAutoScanning ? '⏳ Mengimbas...' : 'Klik Auto Scan untuk imbas semua kaunter secara automatik'}
                   </td></tr>
                 )}
