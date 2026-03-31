@@ -158,7 +158,7 @@ export default {
         // Try D1 Cache first
         const { results: d1Rows } = await env.DB.prepare(
           `SELECT open, high, low, close, volume, price_date FROM prices_mirror 
-           WHERE ticker = ? ORDER BY price_date DESC LIMIT 60`
+           WHERE ticker = ? ORDER BY price_date DESC LIMIT 120`
         ).bind(ticker).all();
 
         let candles: any[] = d1Rows || [];
@@ -188,6 +188,8 @@ export default {
         if (candles.length === 0) throw new Error(`No history for ${ticker}`);
 
         let livePrice = candles[0].close;
+        let liveHigh = candles[0].high;
+        let liveLow = candles[0].low;
         try {
           const yf = await fetch(
             `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1m&range=1d`,
@@ -197,10 +199,18 @@ export default {
             const yd: any = await yf.json();
             const meta = yd?.chart?.result?.[0]?.meta;
             if (meta?.regularMarketPrice) livePrice = meta.regularMarketPrice;
+            if (meta?.regularMarketDayHigh) liveHigh = meta.regularMarketDayHigh;
+            if (meta?.regularMarketDayLow) liveLow = meta.regularMarketDayLow;
           }
         } catch (_) {}
 
-        const virtual = { ...candles[0], close: livePrice, price_date: new Date().toISOString() };
+        const virtual = { 
+            ...candles[0], 
+            close: livePrice, 
+            high: Math.max(liveHigh, livePrice), 
+            low: Math.min(liveLow, livePrice),
+            price_date: new Date().toISOString() 
+        };
         const sig = await getLatestSignal([virtual, ...candles.slice(1)].reverse());
 
         return new Response(JSON.stringify({ 
@@ -228,24 +238,30 @@ export default {
         if (existing) {
           // Update the existing row
           await env.DB.prepare(
-             `UPDATE swing_portfolio SET entry_price=?, target_price=?, stop_loss=?, status='OPEN' WHERE ticker=?`
+             `UPDATE swing_portfolio SET entry_price=?, target_price=?, stop_loss=?, signal=?, reason=?, is_btst=?, status='OPEN' WHERE ticker=?`
           ).bind(
             payload.entry_price ?? null, 
             payload.target_price ?? null, 
             payload.stop_loss ?? null, 
+            payload.signal ?? null,
+            payload.reason ?? null,
+            payload.isBTST ? 1 : 0,
             payload.ticker
           ).run();
         } else {
           // Insert a new row
           await env.DB.prepare(
-            `INSERT INTO swing_portfolio (ticker, name, entry_price, target_price, stop_loss, status) 
-             VALUES (?, ?, ?, ?, ?, ?)`
+            `INSERT INTO swing_portfolio (ticker, name, entry_price, target_price, stop_loss, signal, reason, is_btst, status) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
           ).bind(
             payload.ticker, 
             payload.name ?? '', 
             payload.entry_price ?? null, 
             payload.target_price ?? null, 
             payload.stop_loss ?? null, 
+            payload.signal ?? null,
+            payload.reason ?? null,
+            payload.isBTST ? 1 : 0,
             'OPEN'
           ).run();
         }
@@ -272,7 +288,12 @@ export default {
           `SELECT * FROM swing_portfolio ORDER BY entry_date DESC`
         ).all();
 
-        return new Response(JSON.stringify({ results }), {
+        const formatted = (results || []).map((r: any) => ({
+          ...r,
+          isBTST: r.is_btst === 1
+        }));
+
+        return new Response(JSON.stringify({ results: formatted }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }

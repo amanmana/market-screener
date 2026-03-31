@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { 
-  TrendingUp, Search, ArrowUpRight, TrendingDown,
+  TrendingUp, Search,
   AlertTriangle, Zap, Play, Square, RotateCcw, LineChart, Star, Briefcase
 } from 'lucide-react';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
@@ -49,10 +49,10 @@ const BuyZoneBar = ({ lo, hi, cur }: { lo: number; hi: number; cur: number }) =>
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
         <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)' }}>
-          L <span style={{ color: '#4ade80', fontWeight: 700 }}>{lo.toFixed(dec(lo))}</span>
+          Min <span style={{ color: '#4ade80', fontWeight: 700 }}>{lo.toFixed(dec(lo))}</span>
         </span>
         <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)' }}>
-          <span style={{ color: '#86efac', fontWeight: 700 }}>{hi.toFixed(dec(hi))}</span> H
+          <span style={{ color: '#86efac', fontWeight: 700 }}>{hi.toFixed(dec(hi))}</span> Max
         </span>
       </div>
     </div>
@@ -248,31 +248,31 @@ const MarketScreener = ({ market, isActive, portfolio, handleTogglePortfolio }: 
         </div>
       )}
 
-      <div className="stats-grid" style={{gridTemplateColumns: 'repeat(3, 1fr)'}}>
+      <div className="stats-grid">
         <div className="stat-card">
-          <div className="stat-card-header"><div style={{background:'rgba(77,227,255,0.1)', padding:10, borderRadius:10}}><ArrowUpRight size={20} /></div><span>Signals Found</span></div>
+          <div className="stat-card-header"><span>Signals Found</span></div>
           <div className="stat-card-value font-bold">{signals.length} Signals</div>
         </div>
 
         <div className="stat-card">
-          <div className="stat-card-header"><div style={{background:'rgba(124, 92, 252, 0.1)', padding:10, borderRadius:10}}><TrendingDown size={20} /></div><span>DB Progress</span></div>
+          <div className="stat-card-header"><span>DB Progress</span></div>
           <div className="stat-card-value">
             {scannedCount} <span style={{fontSize: 14, opacity: 0.5}}>/ {totalInMarket || '...'}</span>
-            {isComplete && <span style={{fontSize: 12, color: '#00FF41', marginLeft: 8}}>✅ Lengkap</span>}
+            {isComplete && <span style={{fontSize: 12, color: 'var(--accent-cyan)', marginLeft: 8}}>✅</span>}
           </div>
         </div>
 
         <div className="stat-card">
-          <div className="stat-card-header"><div style={{background:'rgba(0,255,65,0.08)', padding:10, borderRadius:10}}><TrendingUp size={20} color={isComplete ? '#00FF41' : 'var(--accent-cyan)'} /></div><span>Scanning Summary</span></div>
+          <div className="stat-card-header"><span>Scanning Summary</span></div>
           <div style={{display:'flex', alignItems:'center', gap: 16, marginTop: 6}}>
-            <div style={{fontSize: 26, fontWeight: 800, color: isComplete ? '#00FF41' : 'var(--accent-cyan)', lineHeight:1}}>
+            <div style={{fontSize: 26, fontWeight: 800, color: isComplete ? 'var(--accent-cyan)' : 'var(--text-main)', lineHeight:1}}>
               {progress.toFixed(1)}%
             </div>
             <div style={{flex: 1}}>
-              <div style={{height: 6, background: 'rgba(255,255,255,0.08)', borderRadius: 10, overflow:'hidden'}}>
-                <div style={{width:`${progress}%`, height:'100%', background: isComplete ? '#00FF41' : 'linear-gradient(90deg, var(--accent-cyan), #7c5cfc)', transition:'width 0.5s ease', borderRadius:10}} />
+              <div style={{height: 6, background: 'var(--input-bg)', borderRadius: 10, overflow:'hidden'}}>
+                <div style={{width:`${progress}%`, height:'100%', background: isComplete ? 'var(--accent-cyan)' : 'var(--text-main)', transition:'width 0.5s ease', borderRadius:10}} />
               </div>
-              <div style={{display:'flex', justifyContent:'space-between', fontSize: 11, opacity: 0.5, marginTop: 5}}>
+              <div style={{display:'flex', justifyContent:'space-between', fontSize: 11, color: 'var(--text-muted)', marginTop: 5}}>
                 <span>{scannedCount} Scanned</span>
                 <span>{totalInMarket || 1110} Total</span>
               </div>
@@ -335,7 +335,7 @@ const MarketScreener = ({ market, isActive, portfolio, handleTogglePortfolio }: 
           </div>
         )}
 
-        <div style={{maxHeight:'600px', overflowY:'auto'}}>
+        <div className="table-container" style={{maxHeight:'600px', overflowY:'auto'}}>
           <table>
             <thead>
               <tr>
@@ -343,7 +343,7 @@ const MarketScreener = ({ market, isActive, portfolio, handleTogglePortfolio }: 
                 <th style={{width:'12%'}}>SIGNAL</th>
                 <th style={{width:'11%'}}>PRICE</th>
                 <th style={{width:'23%'}}>ANALYSIS</th>
-                <th style={{width:'18%'}}>BUY ZONE</th>
+                <th style={{width:'18%'}}>EP ZONE</th>
                 <th style={{width:'13%', textAlign:'center'}}>ACTIONS</th>
               </tr>
             </thead>
@@ -369,8 +369,9 @@ const MarketScreener = ({ market, isActive, portfolio, handleTogglePortfolio }: 
                           {s.isCaution && <AlertTriangle size={14} color="#FFD700" />}
                         </div>
                         {s.isBTST && s.btstTarget && (
-                          <div style={{fontSize: 10, fontWeight: 700, color: '#fbbf24', letterSpacing: '0.3px', opacity: 0.9}}>
-                            BTST TP: {market==='US'?'$':'RM'} {s.btstTarget.toFixed(s.btstTarget<1?3:2)}
+                          <div style={{display:'flex', flexDirection:'column', gap: 2, marginTop: 2}}>
+                            <div style={{fontSize: 10, fontWeight: 700, color: '#fbbf24'}}>BTST TP: {market==='US'?'$':'RM'} {s.btstTarget.toFixed(3)}</div>
+                            {s.stopLoss && <div style={{fontSize: 10, fontWeight: 700, color: '#ff5252'}}>BTST CL: {market==='US'?'$':'RM'} {s.stopLoss.toFixed(3)}</div>}
                           </div>
                         )}
                         {s.signal === 'SWING' && (
@@ -430,7 +431,7 @@ const MarketScreener = ({ market, isActive, portfolio, handleTogglePortfolio }: 
                 ))
               ) : (
                 <tr><td colSpan={7} style={{textAlign:'center', padding: 80, opacity: 0.3}}>
-                  {isAutoScanning ? '⏳ Mengimbas...' : 'Klik Auto Scan untuk imbas semua kaunter secara automatik'}
+                   {isAutoScanning ? '⏳ Mengimbas...' : 'Klik Auto Scan untuk imbas semua kaunter secara automatik'}
                 </td></tr>
               )}
             </tbody>
@@ -451,7 +452,16 @@ const App = () => {
   const loadPortfolio = async () => {
     try {
       const data = await fetchPortfolio();
-      setPortfolio(data.results || []);
+      const list = data.results || [];
+      setPortfolio(list);
+      
+      // Auto-refresh items with missing signal data when entering Portfolio tab
+      if (activeTab === 'PORTFOLIO') {
+        const needsUpdate = list.filter((p: any) => !p.signal || p.signal === 'HOLD' || p.signal === 'HOLDING' || p.signal === 'RESCAN');
+        if (needsUpdate.length > 0) {
+          needsUpdate.forEach((p: any) => handleRefreshPortfolioTicker(p));
+        }
+      }
     } catch (e) {
       console.error('Load Portfolio Error:', e);
     }
@@ -465,38 +475,58 @@ const App = () => {
     const isSaved = portfolio.some(p => p.ticker === s.ticker);
     try {
       if (isSaved) {
-        // Optimistic UI update
         setPortfolio(prev => prev.filter(p => p.ticker !== s.ticker));
         await removeFromPortfolio(s.ticker);
       } else {
         const newItem = {
           ticker: s.ticker,
           name: s.name,
-          entry_price: s.price || s.entry_price,
-          target_price: s.swingTP || s.btstTarget || s.target_price,
-          stop_loss: s.stopLoss || s.stop_loss
+          entry_price: s.price || s.entry_price || 0,
+          target_price: s.swingTP || s.btstTarget || s.target_price || 0,
+          stop_loss: s.stopLoss || s.stop_loss || 0,
+          signal: s.signal,
+          reason: s.reason,
+          isBTST: s.isBTST,
+          isCaution: s.isCaution
         };
-        // Optimistic UI update
         setPortfolio(prev => [...prev, newItem]);
         await addToPortfolio(newItem);
       }
     } catch (e) {
       console.error('Toggle Portfolio Error:', e);
       alert('Terdapat ralat teknikal semasa menyimpan Portfolio.');
-      loadPortfolio(); // Rollback if error
+      loadPortfolio();
     }
   };
 
   const handleRefreshPortfolioTicker = async (p: any) => {
+    if (refreshing === p.ticker) return;
     try {
       setRefreshing(p.ticker);
       const data = await fetchQuote(p.ticker);
-      setPortfolio(prev => prev.map(item => {
-        if (item.ticker === p.ticker) {
-          return { ...item, current_price: data.c };
-        }
-        return item;
-      }));
+      if (data && !data.error) {
+        setPortfolio(prev => {
+          const newList = prev.map(item => {
+            if (item.ticker === p.ticker) {
+              const updated = { 
+                  ...item, 
+                  current_price: Number(data.price),
+                  target_price: data.btstTarget || data.targetPrice || item.target_price || data.target_price,
+                  stop_loss: data.stopLoss || item.stop_loss || data.stop_loss,
+                  signal: (data.signal && data.signal !== 'NONE' && data.signal !== 'HOLD' && data.signal !== 'HOLDING') ? data.signal : (item.signal || 'RESCAN'),
+                  reason: data.reason || item.reason || 'Screener update complete.',
+                  isBTST: data.isBTST !== undefined ? data.isBTST : item.isBTST,
+                  isCaution: data.isCaution !== undefined ? data.isCaution : item.isCaution
+              };
+              // Persist to D1
+              addToPortfolio(updated).catch(console.error);
+              return updated;
+            }
+            return item;
+          });
+          return newList;
+        });
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -506,7 +536,7 @@ const App = () => {
 
   return (
     <div className="main-layout">
-      <div style={{position:'fixed', bottom: 10, right: 10, fontSize: 10, opacity: 0.3, zIndex: 9999}}>v2.2 · Memory Split</div>
+      <div style={{position:'fixed', bottom: 10, right: 10, fontSize: 10, opacity: 0.3, zIndex: 9999}}>v3.7 · BTST Pro Engine</div>
       <div className="header">
         <div className="logo-group"><TrendingUp size={24} color="var(--accent-cyan)" /><h1 style={{fontSize: 22}}>MarketWise <span style={{fontWeight: 400, opacity: 0.6}}>Screener</span></h1></div>
         <div className="top-nav">
@@ -526,16 +556,38 @@ const App = () => {
 
       <div style={{display: activeTab === 'PORTFOLIO' ? 'block' : 'none', width: '100%'}}>
         <div className="screener-section">
-          <div className="table-header"><h2>My Portfolio</h2></div>
-          <div style={{maxHeight:'600px', overflowY:'auto'}}>
+          <div className="table-header">
+            <div style={{display:'flex', alignItems:'center', gap: 15}}>
+               <h2>My Portfolio</h2>
+               <button 
+                 className="tab-btn" 
+                 style={{background: 'var(--accent-cyan)', color: 'var(--bg-dark)', fontWeight: 700, border: 'none'}}
+                 onClick={() => {
+                   const ids = portfolio.map(p => p.ticker);
+                   let i = 0;
+                   const next = () => {
+                     if (i < ids.length) {
+                       handleRefreshPortfolioTicker(portfolio.find(p => p.ticker === ids[i]));
+                       i++;
+                       setTimeout(next, 500);
+                     }
+                   };
+                   next();
+                 }}
+               >
+                 <RotateCcw size={14} style={{marginRight: 8}}/> Refresh All
+               </button>
+            </div>
+          </div>
+          <div className="table-container" style={{maxHeight:'600px', overflowY:'auto'}}>
             <table>
               <thead>
                 <tr>
-                  <th style={{width:'25%'}}>SYMBOL</th>
-                  <th style={{width:'15%'}}>STATUS</th>
+                  <th style={{width:'20%'}}>SYMBOL</th>
+                  <th style={{width:'15%'}}>SIGNAL</th>
                   <th style={{width:'15%'}}>ENTRY AVG</th>
                   <th style={{width:'20%'}}>TARGET / SL</th>
-                  <th style={{width:'15%'}}>NOTES</th>
+                  <th style={{width:'20%'}}>ANALYSIS</th>
                   <th style={{width:'10%', textAlign:'center'}}>ACTION</th>
                 </tr>
               </thead>
@@ -553,26 +605,55 @@ const App = () => {
                         </div>
                       </td>
                       <td>
-                        <span className="signal-badge" style={{background: 'rgba(255,193,7,0.1)', color: '#ffc107', borderColor: 'rgba(255,193,7,0.3)'}}>
-                            HOLDING
-                        </span>
-                      </td>
-                      <td style={{fontWeight: 700}}>
-                          <span style={{fontSize: 10, opacity: 0.5, display:'block', marginBottom: 2}}>Avg: {p.entry_price?.toFixed(3)}</span>
-                          Live: {(activeMarket as any)==='US'?'$':'RM'} {(p.current_price || p.entry_price)?.toFixed(3)}
-                      </td>
-                      <td>
-                        <div style={{display:'flex', flexDirection:'column', gap: 4}}>
-                          <div style={{fontSize: 11, fontWeight: 700, color: '#4facfe'}}>🎯 TP (Res): {p.target_price?.toFixed(3)}</div>
-                          <div style={{fontSize: 11, fontWeight: 700, color: '#ff5252'}}>�� SL (Sup): {p.stop_loss?.toFixed(3)}</div>
+                        <div style={{display:'flex', flexDirection: 'column', gap: 4}}>
+                           <div style={{display:'flex', alignItems:'center', gap: 6, flexWrap: 'wrap'}}>
+                             {(!p.signal || p.signal === 'NONE' || p.signal === 'HOLD' || p.signal === 'HOLDING' || p.signal === 'RESCAN') ? (
+                               <span className="signal-badge" style={{background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.3)'}}>SCANNING...</span>
+                             ) : (
+                               <>
+                                 <span className={`signal-badge signal-${p.signal.split('-')[0]}`}>{p.signal}</span>
+                                 {p.isBTST && <span className="btst-badge">BTST</span>}
+                                 {p.signal === 'SWING' && <span className="swing-badge">SWING PRO</span>}
+                                 {p.isCaution && <AlertTriangle size={14} color="#FFD700" />}
+                               </>
+                             )}
+                           </div>
                         </div>
                       </td>
+                      <td style={{fontWeight: 700}}>
+                          <span style={{fontSize: 10, opacity: 0.5, display:'block', marginBottom: 2}}>Avg: {Number(p.entry_price || 0).toFixed(3)}</span>
+                          <span style={{color: (p.current_price || p.price) > p.entry_price ? '#00FF41' : '#ff5252'}}>
+                            Live: {(activeMarket as any)==='US'?'$':'RM'} {Number(p.current_price || p.entry_price || p.price || 0).toFixed(3)}
+                          </span>
+                      </td>
                       <td>
-                          <span style={{opacity:0.3, fontSize:10}}>Monitoring Support...</span>
+                        {(!p.signal || (SIGNAL_RANK[p.signal] ?? 0) < 4) ? (
+                          <div style={{display:'flex', flexDirection:'column', gap: 4}}>
+                            {p.isBTST ? (
+                              <>
+                                <div style={{fontSize: 10, fontWeight: 700, color: '#fbbf24'}}>BTST TP: {Number(p.target_price || 0).toFixed(3)}</div>
+                                <div style={{fontSize: 10, fontWeight: 700, color: '#ff5252'}}>BTST CL: {Number(p.stop_loss || 0).toFixed(3)}</div>
+                              </>
+                            ) : (
+                              <>
+                                {p.target_price > 0 && <div style={{fontSize: 11, fontWeight: 700, color: '#4facfe'}}>🎯 TP (Res): {Number(p.target_price).toFixed(3)}</div>}
+                                {p.stop_loss > 0 && <div style={{fontSize: 11, fontWeight: 700, color: '#ff5252'}}>🛑 SL (Sup): {Number(p.stop_loss).toFixed(3)}</div>}
+                                {(!p.target_price && !p.stop_loss) && <span style={{opacity:0.2, fontSize:12}}>—</span>}
+                              </>
+                            )}
+                          </div>
+                        ) : (
+                          <div style={{background: 'rgba(239, 68, 68, 0.1)', padding: '4px 8px', borderRadius: 4, display:'inline-block'}}>
+                            <span style={{color:'#ef4444', fontSize: 10, fontWeight: 700, letterSpacing: '0.5px'}}>EXIT STRATEGY</span>
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                          <span style={{fontSize:11, opacity: 0.8, lineHeight: 1.5}}>{p.reason || p.analysis || 'Fetching intelligence...'}</span>
                       </td>
                       <td style={{textAlign:'center'}}>
                         <div style={{display:'flex', alignItems:'center', justifyContent:'center', gap: 12}}>
-                          <button className="icon-btn-refresh" onClick={() => handleRefreshPortfolioTicker(p)} disabled={refreshing === p.ticker} title="Refresh Live Price">
+                          <button className={`icon-btn-refresh ${refreshing === p.ticker ? 'active' : ''}`} onClick={() => handleRefreshPortfolioTicker(p)} disabled={refreshing === p.ticker} title="Refresh Live Price">
                             <Zap size={14} className={refreshing === p.ticker ? 'loading-spinner' : ''} />
                           </button>
                           <button 
@@ -590,7 +671,6 @@ const App = () => {
                             }
                             target="_blank"
                             rel="noopener noreferrer"
-                            title="Buka di TradingView"
                             style={{
                               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                               width: 28, height: 28, borderRadius: 8,
