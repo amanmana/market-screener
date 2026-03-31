@@ -9,3 +9,8 @@ compatibility_date = "2024-03-30"
 # [kv_namespaces]
 # binding = "SCREENER_CACHE"
 # id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "market-screener-db"
+database_id = "ddb83dd0-8f0b-4720-a71a-c3c9502621c4"

@@ -234,6 +234,44 @@ td {
 .signal-WARN { background: rgba(255, 215, 64, 0.1); color: #ffd740; }
 .signal-PRE { background: rgba(255, 145, 0, 0.1); color: #ff9100; }
 
+.btst-badge {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  box-shadow: 0 0 10px rgba(251, 191, 36, 0.2);
+  animation: btst-pulse 2s infinite;
+}
+
+@keyframes btst-pulse {
+  0% { opacity: 0.8; box-shadow: 0 0 5px rgba(251, 191, 36, 0.2); }
+  50% { opacity: 1; box-shadow: 0 0 15px rgba(251, 191, 36, 0.4); }
+  100% { opacity: 0.8; box-shadow: 0 0 5px rgba(251, 191, 36, 0.2); }
+}
+
+.swing-badge {
+  background: rgba(79, 172, 254, 0.15);
+  color: #4facfe;
+  border: 1px solid rgba(79, 172, 254, 0.4);
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  box-shadow: 0 0 10px rgba(79, 172, 254, 0.2);
+  animation: swing-glow 3s infinite;
+}
+
+@keyframes swing-glow {
+  0% { box-shadow: 0 0 5px rgba(79, 172, 254, 0.2); }
+  50% { box-shadow: 0 0 15px rgba(0, 242, 254, 0.4); }
+  100% { box-shadow: 0 0 5px rgba(79, 172, 254, 0.2); }
+}
+
 /* Market Tabs Styling */
 .market-tabs {
   display: flex;

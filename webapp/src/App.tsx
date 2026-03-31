@@ -13,6 +13,7 @@ const AUTO_SCAN_DELAY_MS = 1500;
 
 // Ranking: nombor kecil = lebih baik (paling atas)
 const SIGNAL_RANK: Record<string, number> = {
+  'SWING':    0,
   'BUY-T':    1,
   'BUY-R':    2,
   'REBUY':    3,
@@ -196,7 +197,19 @@ const App = () => {
       if (data && !data.error) {
         setSignals(prev => prev.map(s => {
           if (s.ticker === ticker) {
-            return { ...s, price: data.price, isCaution: data.isCaution, reason: data.reason, isLive: true };
+            return { 
+              ...s, 
+              price: data.price, 
+              signal: (data.signal && data.signal !== 'NONE') ? data.signal : s.signal,
+              isCaution: data.isCaution !== undefined ? data.isCaution : s.isCaution, 
+              reason: data.reason || s.reason, 
+              entryRangeLow: data.entryRangeLow || s.entryRangeLow,
+              entryRangeHigh: data.entryRangeHigh || s.entryRangeHigh,
+              isBTST: data.isBTST !== undefined ? data.isBTST : s.isBTST,
+              btstTarget: data.btstTarget || s.btstTarget,
+              stopLoss: data.stopLoss || s.stopLoss,
+              isLive: true 
+            };
           }
           return s;
         }));
@@ -341,53 +354,88 @@ const App = () => {
             <table>
               <thead>
                 <tr>
-                  <th style={{width:'16%'}}>SYMBOL</th>
+                  <th style={{width:'23%'}}>SYMBOL</th>
                   <th style={{width:'12%'}}>SIGNAL</th>
                   <th style={{width:'11%'}}>PRICE</th>
-                  <th style={{width:'30%'}}>ANALYSIS</th>
+                  <th style={{width:'23%'}}>ANALYSIS</th>
                   <th style={{width:'18%'}}>BUY ZONE</th>
-                  <th style={{width:'7%', textAlign:'center'}}>CHART</th>
-                  <th style={{width:'6%'}}></th>
+                  <th style={{width:'13%', textAlign:'center'}}>ACTIONS</th>
                 </tr>
               </thead>
               <tbody>
                 {signals.length > 0 ? (
                   signals.map((s, i) => (
                     <tr key={i}>
-                      <td><div className="symbol-cell"><div className="symbol-icon">{s.ticker[0]}</div><div style={{display:'flex',flexDirection:'column'}}><strong>{s.ticker}</strong><span style={{fontSize:11,opacity:0.6}}>{s.name}</span></div></div></td>
-                      <td><div style={{display:'flex',alignItems:'center',gap:6}}><span className={`signal-badge signal-${s.signal.split('-')[0]}`}>{s.signal}</span>{s.isCaution && <AlertTriangle size={14} color="#FFD700" />}</div></td>
+                      <td>
+                        <div className="symbol-cell">
+                          <div className="symbol-icon">{s.ticker[0]}</div>
+                          <div style={{display:'flex', flexDirection:'column', gap: 2}}>
+                            <strong style={{fontSize: 14, color: 'white'}}>{s.name}</strong>
+                            <span style={{fontSize: 11, opacity: 0.5, fontWeight: 500, letterSpacing: '0.5px'}}>{s.ticker}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <div style={{display:'flex', flexDirection: 'column', gap: 4}}>
+                          <div style={{display:'flex', alignItems:'center', gap: 6, flexWrap: 'wrap'}}>
+                            <span className={`signal-badge signal-${s.signal.split('-')[0]}`}>{s.signal}</span>
+                            {s.isBTST && <span className="btst-badge">BTST</span>}
+                            {s.signal === 'SWING' && <span className="swing-badge">SWING PRO</span>}
+                            {s.isCaution && <AlertTriangle size={14} color="#FFD700" />}
+                          </div>
+                          {s.isBTST && s.btstTarget && (
+                            <div style={{fontSize: 10, fontWeight: 700, color: '#fbbf24', letterSpacing: '0.3px', opacity: 0.9}}>
+                              BTST TP: {activeMarket==='US'?'$':'RM'} {s.btstTarget.toFixed(s.btstTarget<1?3:2)}
+                            </div>
+                          )}
+                          {s.signal === 'SWING' && (
+                            <div style={{display:'flex', flexDirection:'column', gap: 2, marginTop: 2}}>
+                              <div style={{fontSize: 10, fontWeight: 700, color: '#4facfe'}}>
+                                Target (+10%): {activeMarket==='US'?'$':'RM'} {s.btstTarget?.toFixed(s.btstTarget<1?3:2)}
+                              </div>
+                              <div style={{fontSize: 10, fontWeight: 700, color: '#ff5252', opacity: 0.8}}>
+                                Stop Loss: {activeMarket==='US'?'$':'RM'} {s.stopLoss?.toFixed(s.stopLoss<1?3:2)}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </td>
                       <td style={{fontWeight:600, color: s.isLive ? '#00FF41' : 'inherit'}}>{activeMarket==='US'?'$':'RM'} {s.price?.toFixed(s.price<1?3:2)}</td>
                       <td style={{fontSize:11, opacity: 0.75, lineHeight: 1.5}}>{s.reason}</td>
                       <td style={{paddingRight: 8}}>
-                        {['BUY-T','BUY-R','REBUY'].includes(s.signal) && s.entryRangeLow && s.entryRangeHigh
+                        {['BUY-T','BUY-R','REBUY','SWING'].includes(s.signal) && s.entryRangeLow && s.entryRangeHigh
                           ? <BuyZoneBar lo={Number(s.entryRangeLow)} hi={Number(s.entryRangeHigh)} cur={s.price || 0} />
                           : <span style={{opacity:0.2, fontSize:12}}>—</span>
                         }
                       </td>
                       <td style={{textAlign:'center'}}>
-                        <a
-                          href={activeMarket === 'MYR'
-                            ? `https://www.tradingview.com/chart/?symbol=MYX:${s.ticker.replace('.KL','')}`
-                            : `https://www.tradingview.com/chart/?symbol=${s.ticker}`
-                          }
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title="Buka di TradingView"
-                          style={{
-                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                            width: 30, height: 30, borderRadius: 8,
-                            background: 'rgba(37,99,235,0.15)',
-                            border: '1px solid rgba(37,99,235,0.4)',
-                            color: '#3b82f6',
-                            textDecoration: 'none',
-                            fontSize: 11, fontWeight: 700,
-                            transition: 'all 0.2s',
-                          }}
-                          onMouseOver={e => (e.currentTarget.style.background = 'rgba(37,99,235,0.35)')}
-                          onMouseOut={e => (e.currentTarget.style.background = 'rgba(37,99,235,0.15)')}
-                        ><LineChart size={15} /></a>
+                        <div style={{display:'flex', alignItems:'center', justifyContent:'center', gap: 12}}>
+                          <button className="icon-btn-refresh" onClick={() => handleRefreshTicker(s.ticker)} disabled={refreshing === s.ticker} title="Refresh Price">
+                            <Zap size={16} className={refreshing === s.ticker ? 'loading-spinner' : ''} />
+                          </button>
+                          
+                          <a
+                            href={activeMarket === 'MYR'
+                              ? `https://www.tradingview.com/chart/?symbol=MYX:${s.ticker.replace('.KL','')}`
+                              : `https://www.tradingview.com/chart/?symbol=${s.ticker}`
+                            }
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Buka di TradingView"
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                              width: 32, height: 32, borderRadius: 8,
+                              background: 'rgba(37,99,235,0.15)',
+                              border: '1px solid rgba(37,99,235,0.4)',
+                              color: '#3b82f6',
+                              textDecoration: 'none',
+                              fontSize: 11, transition: 'all 0.2s',
+                            }}
+                            onMouseOver={e => (e.currentTarget.style.background = 'rgba(37,99,235,0.35)')}
+                            onMouseOut={e => (e.currentTarget.style.background = 'rgba(37,99,235,0.15)')}
+                          ><LineChart size={16} /></a>
+                        </div>
                       </td>
-                      <td><button className="icon-btn-refresh" onClick={() => handleRefreshTicker(s.ticker)} disabled={refreshing === s.ticker}><Zap size={16} className={refreshing === s.ticker ? 'loading-spinner' : ''} /></button></td>
                     </tr>
                   ))
                 ) : (

@@ -5,6 +5,7 @@ export enum SignalType {
   PRE_WARN = 'PRE-WARN',
   WARN = 'WARN',
   SELL = 'SELL',
+  SWING = 'SWING',
   NONE = 'NONE'
 }
 
@@ -19,6 +20,10 @@ export interface SignalResult {
   isCaution?: boolean;
   sessionHigh?: number;
   sessionLow?: number;
+  isBTST?: boolean;
+  btstTarget?: number;
+  stopLoss?: number;
+  name?: string;
 }
 
 export interface ScreenerBatchResponse {

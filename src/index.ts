@@ -3,9 +3,7 @@ import { getLatestSignal } from './signals/engine';
 import { SignalType } from './types/signals';
 
 export default {
-  async fetch(request: Request, env: any, ctx: ExecutionContext): Promise<Response> {
-    const url = new URL(request.url);
-
+  async fetch(request: Request, env: { DB: D1Database; SUPABASE_URL: string; SUPABASE_ANON_KEY: string }, ctx: ExecutionContext): Promise<Response> {
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -14,14 +12,17 @@ export default {
 
     if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
-    // Health check
-    if (url.pathname === '/api/health') {
-      return new Response(JSON.stringify({ status: 'OK', message: 'Backend is ALIVE!' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
-
     try {
+      if (!env.DB) throw new Error('Database D1 Tidak Dijumpai! Perlu check wrangler.toml');
+      const url = new URL(request.url);
+
+      // Health check
+      if (url.pathname === '/api/health') {
+        return new Response(JSON.stringify({ status: 'OK', message: 'Backend is ALIVE!' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
       const supabase = getSupabase(env);
 
       // ROUTE: Bulk Screener
@@ -53,7 +54,7 @@ export default {
         const tickers = stocks.map(s => s.ticker_full);
         const { data: allPrices, error: priceErr } = await supabase
           .from('klse_prices_daily')
-          .select('ticker_full, price_date, open, high, low, close')
+          .select('ticker_full, price_date, open, high, low, close, volume')
           .in('ticker_full', tickers)
           .order('price_date', { ascending: false })
           .limit(tickers.length * 40);
@@ -67,10 +68,54 @@ export default {
           priceMap.get(p.ticker_full)!.push(p);
         });
 
+        // --- BULK D1 CACHE FETCH (CHUNKED TO PREVENT SQL PARAM LIMITS) ---
+        const d1Cache = new Map<string, any[]>();
+        
+        // Chunk tickers to batches of 90 to avoid D1 limit (max 100 vars)
+        const CHUNK_SIZE = 90;
+        for (let i = 0; i < tickers.length; i += CHUNK_SIZE) {
+          const chunk = tickers.slice(i, i + CHUNK_SIZE);
+          const { results: d1Rows } = await env.DB.prepare(
+            `SELECT ticker, open, high, low, close, volume, price_date FROM prices_mirror 
+             WHERE ticker IN (${chunk.map(() => '?').join(',')}) 
+             ORDER BY price_date DESC`
+          ).bind(...chunk).all();
+          
+          d1Rows?.forEach((r: any) => {
+            if (!d1Cache.has(r.ticker)) d1Cache.set(r.ticker, []);
+            if (d1Cache.get(r.ticker)!.length < 60) d1Cache.get(r.ticker)!.push(r);
+          });
+        }
+
         // Run signal engine
         const results = [];
+        const syncBatch: any[] = [];
+
         for (const stock of stocks) {
-          const candles = priceMap.get(stock.ticker_full) || [];
+          let candles = d1Cache.get(stock.ticker_full) || [];
+          
+          if (candles.length < 40) {
+            candles = priceMap.get(stock.ticker_full) || [];
+            
+            if (candles.length > 0) {
+              const stmt = env.DB.prepare(
+                `INSERT OR REPLACE INTO prices_mirror (ticker, price_date, open, high, low, close, volume) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?)`
+              );
+              candles.forEach(c => {
+                syncBatch.push(stmt.bind(
+                  stock.ticker_full, 
+                  c.price_date, 
+                  Number(c.open || 0), 
+                  Number(c.high || 0), 
+                  Number(c.low || 0), 
+                  Number(c.close || 0), 
+                  Number(c.volume || 0)
+                ));
+              });
+            }
+          }
+
           if (candles.length >= 20) {
             const sig = await getLatestSignal([...candles].reverse());
             if (sig.type !== SignalType.NONE) {
@@ -81,11 +126,23 @@ export default {
                 reason: sig.reason,
                 price: sig.price,
                 isCaution: sig.isCaution,
+                isBTST: sig.isBTST,
+                btstTarget: sig.btstTarget,
+                stopLoss: sig.stopLoss,
                 entryRangeLow: sig.entryRangeLow,
                 entryRangeHigh: sig.entryRangeHigh,
               });
             }
           }
+        }
+
+        // Background Batch Sync (Safety limit 100 statements per batch)
+        if (syncBatch.length > 0) {
+          const chunks = [];
+          for (let i = 0; i < syncBatch.length; i += 100) {
+            chunks.push(env.DB.batch(syncBatch.slice(i, i + 100)));
+          }
+          ctx.waitUntil(Promise.all(chunks));
         }
 
         return new Response(JSON.stringify({ results, total: totalC || 0 }), {
@@ -98,17 +155,39 @@ export default {
         const ticker = url.pathname.split('/').pop();
         if (!ticker) throw new Error('Ticker missing');
 
-        const { data: history, error: hErr } = await supabase
-          .from('klse_prices_daily')
-          .select('*')
-          .eq('ticker_full', ticker)
-          .order('price_date', { ascending: false })
-          .limit(35);
+        // Try D1 Cache first
+        const { results: d1Rows } = await env.DB.prepare(
+          `SELECT open, high, low, close, volume, price_date FROM prices_mirror 
+           WHERE ticker = ? ORDER BY price_date DESC LIMIT 60`
+        ).bind(ticker).all();
 
-        if (hErr) throw new Error(hErr.message);
-        if (!history || history.length === 0) throw new Error(`No history for ${ticker}`);
+        let candles: any[] = d1Rows || [];
 
-        let livePrice = history[0].close;
+        if (candles.length < 40) {
+          const { data: history, error: hErr } = await supabase
+            .from('klse_prices_daily')
+            .select('*')
+            .eq('ticker_full', ticker)
+            .order('price_date', { ascending: false })
+            .limit(40);
+
+          if (hErr) throw new Error(hErr.message);
+          candles = history || [];
+          
+        // Sync in background
+        if (candles.length > 0) {
+          try {
+            const stmt = env.DB.prepare(`INSERT OR REPLACE INTO prices_mirror (ticker, price_date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)`);
+            ctx.waitUntil(env.DB.batch(candles.map(c => stmt.bind(ticker, c.price_date, Number(c.open), Number(c.high), Number(c.low), Number(c.close), Number(c.volume)))));
+          } catch (e) {
+            console.error('D1 Sync Error:', e);
+          }
+        }
+        }
+
+        if (candles.length === 0) throw new Error(`No history for ${ticker}`);
+
+        let livePrice = candles[0].close;
         try {
           const yf = await fetch(
             `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1m&range=1d`,
@@ -121,10 +200,21 @@ export default {
           }
         } catch (_) {}
 
-        const virtual = { ...history[0], close: livePrice, price_date: new Date().toISOString() };
-        const sig = await getLatestSignal([virtual, ...history.slice(1)].reverse());
+        const virtual = { ...candles[0], close: livePrice, price_date: new Date().toISOString() };
+        const sig = await getLatestSignal([virtual, ...candles.slice(1)].reverse());
 
-        return new Response(JSON.stringify({ ticker, price: livePrice, isCaution: sig.isCaution, reason: sig.reason }), {
+        return new Response(JSON.stringify({ 
+          ticker, 
+          price: livePrice, 
+          signal: sig.type,
+          isCaution: sig.isCaution, 
+          reason: sig.reason,
+          entryRangeLow: sig.entryRangeLow,
+          entryRangeHigh: sig.entryRangeHigh,
+          isBTST: sig.isBTST,
+          btstTarget: sig.btstTarget,
+          stopLoss: sig.stopLoss
+        }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
@@ -132,7 +222,12 @@ export default {
       return new Response('Not Found', { status: 404, headers: corsHeaders });
 
     } catch (err: any) {
-      return new Response(JSON.stringify({ error: err.message }), {
+      console.error('SERVER_ERROR:', err);
+      return new Response(JSON.stringify({ 
+        error: err.message,
+        stack: err.stack,
+        hint: 'Sila pastikan D1 database anda di-binding dengan nama DB'
+      }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
