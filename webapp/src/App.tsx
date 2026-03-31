@@ -192,11 +192,14 @@ const App = () => {
         </div>
       </div>
 
-      <div className="stats-grid">
+      <div className="stats-grid" style={{gridTemplateColumns: 'repeat(3, 1fr)'}}>
+        {/* Card 1: Signals Found */}
         <div className="stat-card">
           <div className="stat-card-header"><div style={{background:'rgba(77,227,255,0.1)', padding:10, borderRadius:10}}><ArrowUpRight size={20} /></div><span>Signals Found</span></div>
           <div className="stat-card-value font-bold">{signals.length} Signals</div>
         </div>
+
+        {/* Card 2: DB Progress */}
         <div className="stat-card">
           <div className="stat-card-header"><div style={{background:'rgba(124, 92, 252, 0.1)', padding:10, borderRadius:10}}><TrendingDown size={20} /></div><span>DB Progress</span></div>
           <div className="stat-card-value">
@@ -204,9 +207,34 @@ const App = () => {
             {isComplete && <span style={{fontSize: 12, color: '#00FF41', marginLeft: 8}}>✅ Lengkap</span>}
           </div>
         </div>
+
+        {/* Card 3: Scanning Summary */}
+        <div className="stat-card">
+          <div className="stat-card-header"><div style={{background:'rgba(0,255,65,0.08)', padding:10, borderRadius:10}}><TrendingUp size={20} color={isComplete ? '#00FF41' : 'var(--accent-cyan)'} /></div><span>Scanning Summary</span></div>
+          <div style={{display:'flex', alignItems:'center', gap: 16, marginTop: 6}}>
+            <div style={{fontSize: 26, fontWeight: 800, color: isComplete ? '#00FF41' : 'var(--accent-cyan)', lineHeight:1}}>
+              {progress.toFixed(1)}%
+            </div>
+            <div style={{flex: 1}}>
+              <div style={{height: 6, background: 'rgba(255,255,255,0.08)', borderRadius: 10, overflow:'hidden'}}>
+                <div style={{width:`${progress}%`, height:'100%', background: isComplete ? '#00FF41' : 'linear-gradient(90deg, var(--accent-cyan), #7c5cfc)', transition:'width 0.5s ease', borderRadius:10}} />
+              </div>
+              <div style={{display:'flex', justifyContent:'space-between', fontSize: 11, opacity: 0.5, marginTop: 5}}>
+                <span>{scannedCount} Scanned</span>
+                <span>{totalInMarket || 1110} Total</span>
+              </div>
+            </div>
+          </div>
+          {isAutoScanning && (
+            <div style={{fontSize: 11, color: 'var(--accent-cyan)', marginTop: 6}}>🔄 {autoScanStatus}</div>
+          )}
+          {isComplete && !isAutoScanning && (
+            <div style={{fontSize: 11, color: '#00FF41', marginTop: 6}}>✅ Semua {totalInMarket} kaunter telah diimbas</div>
+          )}
+        </div>
       </div>
 
-      <div className="content-grid">
+      <div style={{width:'100%'}}>
         <div className="screener-section">
           <div className="table-header">
             <h2>{activeMarket} Results</h2>
@@ -300,46 +328,6 @@ const App = () => {
                 )}
               </tbody>
             </table>
-          </div>
-        </div>
-
-        <div className="analytics-sidebar">
-          <div className="analytics-section">
-            <h3>Scanning Summary</h3>
-            <div style={{marginTop: 15, background: 'rgba(255,255,255,0.03)', padding: 15, borderRadius: 12, border: '1px solid rgba(255,255,255,0.05)'}}>
-              <div style={{fontSize: 28, fontWeight: '800', color: isComplete ? '#00FF41' : 'var(--accent-cyan)'}}>
-                {progress.toFixed(1)}%
-              </div>
-              <div style={{height: 6, background: 'rgba(255,255,255,0.1)', borderRadius: 10, margin:'12px 0', overflow:'hidden'}}>
-                <div style={{
-                  width: `${progress}%`, 
-                  height: '100%', 
-                  background: isComplete ? '#00FF41' : 'linear-gradient(90deg, var(--accent-cyan), #7c5cfc)',
-                  transition: 'width 0.5s ease',
-                  borderRadius: 10
-                }} />
-              </div>
-              <div style={{display:'flex', justifyContent:'space-between', fontSize: 11, opacity: 0.6}}>
-                <span>{scannedCount} Scanned</span>
-                <span>{totalInMarket} Total</span>
-              </div>
-            </div>
-
-            {/* Status box */}
-            <div style={{marginTop: 12, padding: '10px 14px', borderRadius: 10, background: isAutoScanning ? 'rgba(77,227,255,0.08)' : 'rgba(255,255,255,0.03)', border: `1px solid ${isAutoScanning ? 'rgba(77,227,255,0.3)' : 'rgba(255,255,255,0.05)'}`, fontSize: 12}}>
-              {isAutoScanning ? (
-                <div style={{color: 'var(--accent-cyan)'}}>
-                  🔄 Auto Scan berjalan...<br/>
-                  <span style={{opacity: 0.7, fontSize: 11}}>Jeda 1.5s antara setiap batch</span>
-                </div>
-              ) : isComplete ? (
-                <div style={{color: '#00FF41'}}>✅ Semua {totalInMarket} kaunter telah diimbas</div>
-              ) : (
-                <div style={{opacity: 0.5, fontSize: 11}}>
-                  Klik <strong>Auto Scan</strong> untuk imbas semua {totalInMarket || 1110} kaunter secara automatik
-                </div>
-              )}
-            </div>
           </div>
         </div>
       </div>
