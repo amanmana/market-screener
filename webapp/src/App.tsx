@@ -45,7 +45,7 @@ const ActionBadge = ({ p }: { p: any }) => {
   const haStatus = p.haStatus || 'UNKNOWN';
   const isExit = ['SELL', 'WARN', 'PRE-WARN'].includes(signal);
 
-  if (isExit) return <span style={{background:'#ef4444', color:'white', padding:'2px 8px', borderRadius:4, fontSize:10, fontWeight:900, border:'1px solid #ff5252'}}>EXIT</span>;
+  if (isExit) return <span style={{display:'inline-block', background:'#ef4444', color:'white', padding:'2px 8px', borderRadius:4, fontSize:10, fontWeight:900, border:'1px solid #ff5252'}}>EXIT</span>;
   if (signal === 'NONE') return <span style={{background:'rgba(255,255,255,0.05)', color:'rgba(255,255,255,0.3)', padding:'2px 8px', borderRadius:4, fontSize:10}}>WAIT</span>;
 
   // Logic for Action with HA Confirmation
@@ -95,7 +95,7 @@ const TradePlanCell = ({ p }: any) => {
   
   if (isExit) {
      return (
-        <div style={{display:'flex', flexDirection:'column', gap: 4}}>
+        <div style={{display:'flex', flexDirection:'column', gap: 4, alignItems: 'flex-start'}}>
             <ActionBadge p={p} />
             <span style={{color:'#ef4444', fontSize: 9, fontWeight: 700, opacity: 0.8}}>DANGER ZONE</span>
         </div>
@@ -695,7 +695,8 @@ const App = () => {
               entry_range_low: data.entryRangeLow || data.entry_range_low || exists.entry_range_low,
               entry_range_high: data.entryRangeHigh || data.entry_range_high || exists.entry_range_high,
               rr_ratio: data.currentRR || data.rrRatio || data.rr_ratio || exists.rr_ratio,
-              entry_status: data.entryStatus || data.entry_status || exists.entry_status
+              entry_status: data.entryStatus || data.entry_status || exists.entry_status,
+              avg_volume_rm: data.avgVolumeRM || data.avg_volume_rm || exists.avg_volume_rm
           };
 
           // Persist to D1 only after state is ready
