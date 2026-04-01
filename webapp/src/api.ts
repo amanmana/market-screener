@@ -20,7 +20,7 @@ export async function fetchQuote(ticker: string) {
   return res.json();
 }
 
-export async function addToPortfolio(payload: any) {
+export async function addToWatchlist(payload: any) {
   const res = await fetch(`${API_BASE}/portfolio/add`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -30,7 +30,7 @@ export async function addToPortfolio(payload: any) {
   return res.json();
 }
 
-export async function removeFromPortfolio(ticker: string) {
+export async function removeFromWatchlist(ticker: string) {
   const res = await fetch(`${API_BASE}/portfolio/remove`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -40,7 +40,7 @@ export async function removeFromPortfolio(ticker: string) {
   return res.json();
 }
 
-export async function fetchPortfolio() {
+export async function fetchWatchlist() {
   const res = await fetch(`${API_BASE}/portfolio/list`);
   if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
   return res.json();

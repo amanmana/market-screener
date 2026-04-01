@@ -461,4 +461,16 @@ tr:hover td {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-faint); 
+}/* Responsive utilities */
+@media (max-width: 640px) {
+  .hide-mobile {
+    display: none !important;
+  }
+  .show-mobile-only {
+    display: block !important;
+  }
+}
+
+.show-mobile-only {
+  display: none;
 }

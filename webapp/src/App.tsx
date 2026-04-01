@@ -4,7 +4,7 @@ import {
   AlertTriangle, Zap, Play, Square, RotateCcw, LineChart, Star, Briefcase
 } from 'lucide-react';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
-import { fetchScreener, fetchQuote, addToPortfolio, fetchPortfolio, removeFromPortfolio } from './api';
+import { fetchScreener, fetchQuote, addToWatchlist, fetchWatchlist, removeFromWatchlist } from './api';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
@@ -22,46 +22,188 @@ const SIGNAL_RANK: Record<string, number> = {
 };
 
 const sortBySignal = (arr: any[]) =>
-  [...arr].sort((a, b) => (SIGNAL_RANK[a.signal] ?? 9) - (SIGNAL_RANK[b.signal] ?? 9));
+  [...arr].sort((a, b) => {
+    const rankMap: Record<string, number> = { 'A': 1, 'B': 2, 'C': 3, 'D': 4 };
+    const rA = rankMap[a.setupRank || 'D'];
+    const rB = rankMap[b.setupRank || 'D'];
+    if (rA !== rB) return rA - rB;
+    return (b.setupScore || 0) - (a.setupScore || 0);
+  });
 
-const BuyZoneBar = ({ lo, hi, cur }: { lo: number; hi: number; cur: number }) => {
-  const range = hi - lo;
-  const pct = range > 0 ? Math.max(0, Math.min(100, ((cur - lo) / range) * 100)) : 50;
-  const dec = (v: number) => (v < 1 ? 3 : 2);
-  const inZone = cur >= lo && cur <= hi;
+const formatVol = (val: number) => {
+  if (!val) return '0';
+  if (val >= 1000000) return (val / 1000000).toFixed(2) + 'M';
+  if (val >= 1000) return (val / 1000).toFixed(0) + 'K';
+  return val.toFixed(0);
+};
+
+const ActionBadge = ({ p }: { p: any }) => {
+  const signal = (p?.signal || 'NONE').toUpperCase();
+  const price = Number(p.current_price || p.price || 0);
+  const entryLow = Number(p.entryRangeLow || p.entry_range_low || 0);
+  const entryHigh = Number(p.entryRangeHigh || p.entry_range_high || 0);
+  const haStatus = p.haStatus || 'UNKNOWN';
+  const isExit = ['SELL', 'WARN', 'PRE-WARN'].includes(signal);
+
+  if (isExit) return <span style={{background:'#ef4444', color:'white', padding:'2px 8px', borderRadius:4, fontSize:10, fontWeight:900, border:'1px solid #ff5252'}}>EXIT</span>;
+  if (signal === 'NONE') return <span style={{background:'rgba(255,255,255,0.05)', color:'rgba(255,255,255,0.3)', padding:'2px 8px', borderRadius:4, fontSize:10}}>WAIT</span>;
+
+  // Logic for Action with HA Confirmation
+  // 2_GREEN means both current and previous HA candles are green.
+  if (entryLow > 0 && entryHigh > 0) {
+    if (price >= entryLow && price <= entryHigh) {
+      if (haStatus === '2_GREEN') {
+        return <span style={{background:'#10b981', color:'white', padding:'2px 8px', borderRadius:4, fontSize:10, fontWeight:900, boxShadow:'0 0 10px rgba(16,185,129,0.3)'}}>BUY NOW</span>;
+      }
+      return <span style={{background:'#40E0D0', color:'#0a0b14', padding:'2px 8px', borderRadius:4, fontSize:10, fontWeight:900, boxShadow:'0 0 8px rgba(64,224,208,0.3)'}}>WAIT (HA)</span>;
+    }
+    if (price < entryLow) {
+      return <span style={{background:'rgba(255,255,255,0.1)', color:'rgba(255,255,255,0.6)', padding:'2px 8px', borderRadius:4, fontSize:10, fontWeight:900, border: '1px solid rgba(255,255,255,0.1)'}}>WAIT</span>;
+    }
+    if (price > entryHigh) {
+      return <span style={{background:'rgba(255,255,255,0.05)', color:'rgba(255,255,255,0.4)', padding:'2px 8px', borderRadius:4, fontSize:10, fontWeight:900, border:'1px solid rgba(255,255,255,0.05)'}}>WATCH</span>;
+    }
+  }
+
+  return <span style={{background:'rgba(255,255,255,0.05)', color:'rgba(255,255,255,0.4)', padding:'2px 8px', borderRadius:4, fontSize:10}}>WAIT</span>;
+};
+
+const RankBadge = ({ rank, score }: { rank: string, score: number }) => {
+  const getRankColor = (r: string) => {
+    if (r === 'A') return '#10b981';
+    if (r === 'B') return '#6366f1';
+    if (r === 'C') return '#40E0D0';
+    return '#64748b';
+  };
+  
   return (
-    <div style={{ minWidth: 130, padding: '2px 0' }}>
-      <div style={{ position: 'relative', height: 5, borderRadius: 4, background: 'rgba(255,255,255,0.07)', margin: '10px 0 4px' }}>
-        <div style={{
-          position: 'absolute', inset: 0, borderRadius: 4,
-          background: 'linear-gradient(90deg, rgba(74,222,128,0.2), rgba(74,222,128,0.65))'
-        }} />
-        <div style={{
-          position: 'absolute',
-          left: `calc(${pct}% - 4px)`,
-          top: -10,
-          fontSize: 10,
-          color: inZone ? '#facc15' : '#f87171',
-          lineHeight: 1,
-          userSelect: 'none',
-          filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.8))'
-        }}>▼</div>
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 4, 
+      background: `${getRankColor(rank)}20`, padding: '2px 6px', borderRadius: 4,
+      border: `1px solid ${getRankColor(rank)}40`
+    }}>
+      <span style={{ fontSize: 10, fontWeight: 900, color: getRankColor(rank) }}>{rank}</span>
+      <div style={{ height: 8, width: 1, background: 'rgba(255,255,255,0.1)' }} />
+      <span style={{ fontSize: 9, fontWeight: 700, opacity: 0.9, color: 'white' }}>{Math.round(score)}</span>
+    </div>
+  );
+};
+
+const TradePlanCell = ({ p }: any) => {
+  const signal = p?.signal || 'NONE';
+  const isExit = (SIGNAL_RANK[signal] ?? 0) >= 4; 
+  
+  if (isExit) {
+     return (
+        <div style={{display:'flex', flexDirection:'column', gap: 4}}>
+            <ActionBadge p={p} />
+            <span style={{color:'#ef4444', fontSize: 9, fontWeight: 700, opacity: 0.8}}>DANGER ZONE</span>
+        </div>
+     );
+  }
+
+  const tp = p.targetPrice || p.target_price || 0;
+  const sl = p.stopLoss || p.stop_loss || 0;
+  const entryHigh = p.entryRangeHigh || p.entry_range_high || 0;
+  const entryLow = p.entryRangeLow || p.entry_range_low || 0;
+  const rr = p.rrRatio || p.rr_ratio || p.currentRR || 0;
+  const statusRaw = (p.entryStatus || p.entry_status || '').toLowerCase();
+  
+  const hasPlan = tp > 0 && sl > 0;
+  const currency = 'RM';
+  const dec = (v: number) => v < 1 ? 3 : 2;
+
+  const getStatusColor = (s: string) => {
+    if (['ideal', 'actionable'].includes(s)) return '#10b981';
+    if (['acceptable'].includes(s)) return '#fbbf24';
+    if (s === 'late_setup') return '#ff5252';
+    if (s === 'waiting_confirmation') return '#60a5fa';
+    if (s === 'incomplete_trade_plan') return '#94a3b8';
+    if (s === 'insufficient_data') return '#64748b';
+    return 'rgba(255,255,255,0.4)';
+  };
+
+  const getFriendlyStatus = (s: string) => {
+    if (s === 'late_setup') return 'LATE SETUP';
+    if (s === 'waiting_confirmation') return 'WAITING CONFIRMATION';
+    if (s === 'incomplete_trade_plan') return 'TRADE PLAN INCOMPLETE';
+    if (s === 'insufficient_data') return 'INSUFFICIENT DATA';
+    if (s === 'ideal') return 'ACTIONABLE (IDEAL)';
+    if (s === 'acceptable') return 'ACTIONABLE (ACCEPT)';
+    if (s === 'invalid') return 'INVALID / BROKEN';
+    return s.toUpperCase().replace(/_/g, ' ') || 'NO ACTIVE SETUP';
+  };
+
+  // If no plan fields but signal exists
+  if (!hasPlan && signal !== 'NONE') {
+    const fallbackStatus = statusRaw || 'incomplete_trade_plan';
+    return (
+      <div style={{display:'flex', flexDirection:'column', gap: 4}}>
+        <span style={{
+          fontSize: 9, padding: '2px 6px', borderRadius: 4, 
+          background: `${getStatusColor(fallbackStatus)}15`, 
+          color: getStatusColor(fallbackStatus), border: `1px solid ${getStatusColor(fallbackStatus)}33`,
+          fontWeight: 800, textTransform: 'uppercase', width: 'fit-content'
+        }}>
+          {getFriendlyStatus(fallbackStatus)}
+        </span>
+        <span style={{fontSize: 9, opacity: 0.4}}>Price levels undetermined</span>
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)' }}>
-          Min <span style={{ color: '#4ade80', fontWeight: 700 }}>{lo.toFixed(dec(lo))}</span>
-        </span>
-        <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)' }}>
-          <span style={{ color: '#86efac', fontWeight: 700 }}>{hi.toFixed(dec(hi))}</span> Max
-        </span>
+    );
+  }
+
+  if (!hasPlan) {
+    if (statusRaw && statusRaw !== 'no_active_setup') {
+       return (
+         <span style={{
+            fontSize: 9, padding: '2px 6px', borderRadius: 4, 
+            background: `${getStatusColor(statusRaw)}15`, 
+            color: getStatusColor(statusRaw), border: `1px solid ${getStatusColor(statusRaw)}33`,
+            fontWeight: 800, textTransform: 'uppercase', width: 'fit-content'
+          }}>
+            {getFriendlyStatus(statusRaw)}
+          </span>
+       );
+    }
+    return <span style={{opacity:0.3, fontSize:10, fontWeight: 600}}>NO ACTIVE SETUP</span>;
+  }
+
+  return (
+    <div style={{display:'flex', flexDirection:'column', gap: 3, minWidth: 140}}>
+      <div style={{fontSize: 12, fontWeight: 800, color: '#facc15'}}>
+         <span style={{opacity:0.6, fontSize: 9, marginRight: 4}}>ENTRY</span>
+         {p.suggestedEntry > 0 
+           ? `${currency} ${p.suggestedEntry.toFixed(dec(p.suggestedEntry))}` 
+           : (entryLow > 0 && entryHigh > entryLow 
+             ? `${currency} ${entryLow.toFixed(dec(entryLow))} – ${entryHigh.toFixed(dec(entryHigh))}` 
+             : `${currency} ${(entryLow || p.entry_price || 0).toFixed(dec(entryLow||p.entry_price))}`)}
+      </div>
+      <div style={{fontSize: 11, fontWeight: 700, color: '#4facfe'}}>
+         <span style={{opacity:0.6, fontSize: 9, marginRight: 4}}>TP</span>
+         {currency} {tp.toFixed(dec(tp))}
+      </div>
+      <div style={{fontSize: 11, fontWeight: 700, color: '#ff5252'}}>
+         <span style={{opacity:0.6, fontSize: 9, marginRight: 4}}>SL</span>
+         {currency} {sl.toFixed(dec(sl))}
+      </div>
+      <div style={{display:'flex', alignItems: 'center', gap: 8, marginTop: 5}}>
+         <ActionBadge p={p} />
+         <span style={{fontSize: 9, fontWeight: 700, opacity: 0.8}}>RR: <span style={{color: 'var(--accent-cyan)'}}>{rr > 0 ? rr.toFixed(2) : '-'}</span></span>
+         <span style={{
+            fontSize: 9, padding: '1px 5px', borderRadius: 4, 
+            background: `${getStatusColor(statusRaw)}15`, 
+            color: getStatusColor(statusRaw), border: `1px solid ${getStatusColor(statusRaw)}33`,
+            fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.4px'
+         }}>{getFriendlyStatus(statusRaw)}</span>
       </div>
     </div>
   );
 };
 
-// MARKET SCREENER COMPONENT (ISOLATED STATE PER MARKET)
-const MarketScreener = ({ market, isActive, portfolio, handleTogglePortfolio }: any) => {
+// MARKET SCREENER COMPONENT (BURSA MALAYSIA ONLY)
+const MarketScreener = ({ isActive, watchlist, handleToggleWatchlist }: any) => {
   const [refreshing, setRefreshing] = useState<string | null>(null);
+  const market = 'MYR';
   
   const [signals, setSignals] = useState<any[]>(() => {
     const s = localStorage.getItem(`signals_${market}`);
@@ -83,6 +225,9 @@ const MarketScreener = ({ market, isActive, portfolio, handleTogglePortfolio }: 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isAutoScanning, setIsAutoScanning] = useState(false);
   const [autoScanStatus, setAutoScanStatus] = useState('');
+  const [lastUpdated, setLastUpdated] = useState<string | null>(() => {
+    return localStorage.getItem(`last_updated_${market}`);
+  });
 
   const isScanning = useRef(false);
   const autoScanActive = useRef(false);
@@ -95,7 +240,8 @@ const MarketScreener = ({ market, isActive, portfolio, handleTogglePortfolio }: 
     localStorage.setItem(`scanned_${market}`, scannedCount.toString());
     localStorage.setItem(`total_${market}`, totalInMarket.toString());
     localStorage.setItem(`offset_${market}`, currentOffset.toString());
-  }, [signals, scannedCount, totalInMarket, currentOffset, market]);
+    if (lastUpdated) localStorage.setItem(`last_updated_${market}`, lastUpdated);
+  }, [signals, scannedCount, totalInMarket, currentOffset, market, lastUpdated]);
 
   useEffect(() => {
     // Only auto-start if there's no saved history
@@ -120,6 +266,8 @@ const MarketScreener = ({ market, isActive, portfolio, handleTogglePortfolio }: 
     localStorage.removeItem(`scanned_${market}`);
     localStorage.removeItem(`total_${market}`);
     localStorage.removeItem(`offset_${market}`);
+    localStorage.removeItem(`last_updated_${market}`);
+    setLastUpdated(null);
     
     await startScan(0);
   };
@@ -145,8 +293,20 @@ const MarketScreener = ({ market, isActive, portfolio, handleTogglePortfolio }: 
       setCurrentOffset(newOffset);
       offsetRef.current = newOffset;
       
-      if (data.results && data.results.length > 0) {
-        setSignals(prev => sortBySignal([...prev, ...data.results]));
+      if (data && data.results && data.results.length > 0) {
+        // Update last updated timestamp from the first result if available
+        const latestDate = data.results[0].timestamp;
+        if (latestDate) {
+          const dateObj = new Date(latestDate);
+          const formatted = dateObj.toLocaleDateString('en-GB', { 
+            day: '2-digit', month: 'short', year: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+          });
+          setLastUpdated(formatted);
+        }
+
+        const actionable = data.results.filter((r: any) => r.signal && r.signal !== 'NONE');
+        setSignals(prev => sortBySignal([...prev, ...actionable]));
       }
       return newOffset;
     } catch (err: any) { 
@@ -226,6 +386,7 @@ const MarketScreener = ({ market, isActive, portfolio, handleTogglePortfolio }: 
               isBTST: data.isBTST !== undefined ? data.isBTST : s.isBTST,
               btstTarget: data.btstTarget || s.btstTarget,
               stopLoss: data.stopLoss || s.stopLoss,
+              avgVolumeRM: data.avgVolumeRM || s.avgVolumeRM,
               isLive: true 
             };
           }
@@ -260,6 +421,12 @@ const MarketScreener = ({ market, isActive, portfolio, handleTogglePortfolio }: 
             {scannedCount} <span style={{fontSize: 14, opacity: 0.5}}>/ {totalInMarket || '...'}</span>
             {isComplete && <span style={{fontSize: 12, color: 'var(--accent-cyan)', marginLeft: 8}}>✅</span>}
           </div>
+          {lastUpdated && (
+            <div style={{fontSize: 10, color: 'var(--text-muted)', marginTop: 8, display:'flex', alignItems:'center', gap: 4}}>
+              <span style={{width: 6, height: 6, borderRadius: '50%', background: '#00FF41', display:'inline-block'}}></span>
+              Data as of: <span style={{color: 'var(--text-main)', fontWeight: 600}}>{lastUpdated}</span>
+            </div>
+          )}
         </div>
 
         <div className="stat-card">
@@ -287,10 +454,10 @@ const MarketScreener = ({ market, isActive, portfolio, handleTogglePortfolio }: 
         </div>
       </div>
 
-      <div className="screener-section">
-        <div className="table-header">
-          <h2>{market} Results</h2>
-          <div style={{display:'flex', gap: 8, alignItems: 'center'}}>
+        <div className="screener-section">
+          <div className="table-header">
+            <h2>Bursa Malaysia Results</h2>
+            <div style={{display:'flex', gap: 8, alignItems: 'center'}}>
             {isAutoScanning && (
               <span style={{fontSize: 11, color: 'var(--accent-cyan)', animation: 'pulse 1.5s infinite'}}>
                 {autoScanStatus}
@@ -339,79 +506,81 @@ const MarketScreener = ({ market, isActive, portfolio, handleTogglePortfolio }: 
           <table>
             <thead>
               <tr>
-                <th style={{width:'23%'}}>SYMBOL</th>
-                <th style={{width:'12%'}}>SIGNAL</th>
-                <th style={{width:'11%'}}>PRICE</th>
-                <th style={{width:'23%'}}>ANALYSIS</th>
+                <th className="hide-mobile" style={{width:'22%'}}>SYMBOL</th>
+                <th className="hide-mobile" style={{width:'11%'}}>SIGNAL</th>
+                <th style={{width:'12%', textAlign:'center'}}>ACTION</th>
+                <th style={{width:'10%'}}>PRICE</th>
                 <th style={{width:'18%'}}>EP ZONE</th>
-                <th style={{width:'13%', textAlign:'center'}}>ACTIONS</th>
+                <th style={{width:'27%', textAlign:'center'}}>TOOLS</th>
               </tr>
             </thead>
             <tbody>
               {signals.length > 0 ? (
                 signals.map((s, i) => (
                   <tr key={i}>
-                    <td>
+                    <td className="hide-mobile">
                       <div className="symbol-cell">
-                        <div className="symbol-icon">{s.ticker[0]}</div>
-                        <div style={{display:'flex', flexDirection:'column', gap: 2}}>
-                          <strong style={{fontSize: 14, color: 'white'}}>{s.name}</strong>
+                        <div className="symbol-icon" style={{background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)', color: 'white'}}>{(s.name || s.ticker)[0]}</div>
+                        <div style={{display:'flex', flexDirection:'column', gap: 2, flex: 1}}>
+                          <div style={{display:'flex', alignItems:'center', justifyContent: 'space-between'}}>
+                             <strong style={{fontSize: 14, color: 'white'}}>{s.name}</strong>
+                             {s.setupRank && <RankBadge rank={s.setupRank} score={s.setupScore || 0} />}
+                          </div>
                           <span style={{fontSize: 11, opacity: 0.5, fontWeight: 500, letterSpacing: '0.5px'}}>{s.ticker}</span>
+                          <span style={{fontSize: 9, opacity: 0.4, fontWeight: 700}}>VOL: {formatVol(s.avgVolumeRM)} RM</span>
                         </div>
                       </div>
                     </td>
-                    <td>
+                    <td className="hide-mobile">
                       <div style={{display:'flex', flexDirection: 'column', gap: 4}}>
                         <div style={{display:'flex', alignItems:'center', gap: 6, flexWrap: 'wrap'}}>
-                          <span className={`signal-badge signal-${s.signal.split('-')[0]}`}>{s.signal}</span>
+                          <span className={`signal-badge signal-${(s.signal || 'NONE').split('-')[0]}`}>{s.signal || 'NONE'}</span>
                           {s.isBTST && <span className="btst-badge">BTST</span>}
                           {s.signal === 'SWING' && <span className="swing-badge">SWING PRO</span>}
-                          {s.isCaution && <AlertTriangle size={14} color="#FFD700" />}
+                          {s.previewOnly && <span className="preview-badge" style={{fontSize: 9, padding: '2px 5px', background: 'rgba(59,130,246,0.1)', color: '#60a5fa', borderRadius: 4, border: '1px solid rgba(59,130,246,0.2)'}}>LIVE PREVIEW</span>}
+                          {s.exitRisk === 'HIGH' && (
+                             <span style={{fontSize: 9, padding: '2px 5px', background: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 4, fontWeight: 800}}>EXIT RISK</span>
+                          )}
                         </div>
-                        {s.isBTST && s.btstTarget && (
-                          <div style={{display:'flex', flexDirection:'column', gap: 2, marginTop: 2}}>
-                            <div style={{fontSize: 10, fontWeight: 700, color: '#fbbf24'}}>BTST TP: {market==='US'?'$':'RM'} {s.btstTarget.toFixed(3)}</div>
-                            {s.stopLoss && <div style={{fontSize: 10, fontWeight: 700, color: '#ff5252'}}>BTST CL: {market==='US'?'$':'RM'} {s.stopLoss.toFixed(3)}</div>}
-                          </div>
-                        )}
-                        {s.signal === 'SWING' && (
-                          <div style={{display:'flex', flexDirection:'column', gap: 2, marginTop: 2}}>
-                            <div style={{fontSize: 10, fontWeight: 700, color: '#4facfe'}}>
-                              Target (Resistance): {market==='US'?'$':'RM'} {s.btstTarget?.toFixed(s.btstTarget<1?3:2)}
-                            </div>
-                            <div style={{fontSize: 10, fontWeight: 700, color: '#ff5252', opacity: 0.8}}>
-                              Stop Loss: {market==='US'?'$':'RM'} {s.stopLoss?.toFixed(s.stopLoss<1?3:2)}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                    <td style={{fontWeight:600, color: s.isLive ? '#00FF41' : 'inherit'}}>{market==='US'?'$':'RM'} {s.price?.toFixed(s.price<1?3:2)}</td>
-                    <td style={{fontSize:11, opacity: 0.75, lineHeight: 1.5}}>{s.reason}</td>
-                    <td style={{paddingRight: 8}}>
-                      {['BUY-T','BUY-R','REBUY','SWING'].includes(s.signal) && s.entryRangeLow && s.entryRangeHigh
-                        ? <BuyZoneBar lo={Number(s.entryRangeLow)} hi={Number(s.entryRangeHigh)} cur={s.price || 0} />
-                        : <span style={{opacity:0.2, fontSize:12}}>—</span>
-                      }
-                    </td>
-                    <td style={{textAlign:'center'}}>
-                      <div style={{display:'flex', alignItems:'center', justifyContent:'center', gap: 12}}>
-                        <button className="icon-btn-refresh" onClick={() => handleRefreshTicker(s.ticker)} disabled={refreshing === s.ticker} title="Refresh Price">
-                          <Zap size={16} className={refreshing === s.ticker ? 'loading-spinner' : ''} />
-                        </button>
-                        <button 
-                          className="icon-btn-refresh" 
-                          style={{borderColor: 'rgba(255,193,7,0.3)', color: '#ffc107'}} 
-                          onClick={() => handleTogglePortfolio(s)}
-                          title="Simpan/Padam Portfolio"
-                        >
-                          {portfolio.some((p:any) => p.ticker === s.ticker) ? <Star size={16} fill="#ffc107" /> : <Star size={16} />}
-                        </button>
+                      
+                      {['SWING','REBUY','BUY-T','BUY-R'].includes(s.signal) && s.targetPrice && s.stopLoss && (
+                        <div style={{display:'flex', flexDirection:'column', gap: 2, marginTop: 6, padding: '4px 8px', background: 'rgba(255,255,255,0.02)', borderRadius: 4, borderLeft: '2px solid var(--accent-cyan)'}}>
+                           <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                             <span style={{fontSize: 10, color: 'var(--accent-cyan)', fontWeight: 700}}>Target: RM {s.targetPrice.toFixed(3)}</span>
+                             <span style={{fontSize: 9, opacity: 0.6}}>RR {s.rrRatio?.toFixed(1) || 'N/A'}</span>
+                           </div>
+                           <span style={{fontSize: 10, color: '#ff5252', fontWeight: 600}}>Stop: RM {s.stopLoss.toFixed(3)}</span>
+                        </div>
+                      )}
+
+                      {s.isBTST && s.btstMetadata && (
+                        <div style={{marginTop: 6, padding: '4px 8px', background: 'rgba(251,191,36,0.05)', borderRadius: 4, borderLeft: '2px solid #fbbf24'}}>
+                            <div style={{fontSize: 10, fontWeight: 800, color: '#fbbf24'}}>BTST TP: {s.btstMetadata.target.toFixed(3)}</div>
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                  <td style={{textAlign:'center'}}>
+                    <ActionBadge p={s} />
+                  </td>
+                  <td style={{fontWeight:600}}>RM {s.price?.toFixed(s.price<1?3:2)}</td>
+                  <td style={{padding: '12px 8px'}}>
+                      <TradePlanCell p={s} />
+                  </td>
+                  <td style={{textAlign:'center', paddingRight: 10}}>
+                    <div style={{display:'flex', alignItems:'center', justifyContent:'center', gap: 10}}>
+                      <button className="icon-btn-refresh" onClick={() => handleRefreshTicker(s.ticker)} disabled={refreshing === s.ticker}>
+                        <Zap size={14} className={refreshing === s.ticker ? 'loading-spinner' : ''} />
+                      </button>
+                      <button 
+                        className="icon-btn-refresh" 
+                        style={{color: watchlist.some((p:any) => p.ticker === s.ticker) ? '#ffc107' : 'inherit'}} 
+                        onClick={() => handleToggleWatchlist(s)}
+                      >
+                        <Star size={14} fill={watchlist.some((p:any) => p.ticker === s.ticker) ? "#ffc107" : "none"} />
+                      </button>
                         <a
-                          href={market === 'MYR'
-                            ? `https://www.tradingview.com/chart/?symbol=MYX:${s.ticker.replace('.KL','')}`
-                            : `https://www.tradingview.com/chart/?symbol=${s.ticker}`
-                          }
+                          href={`https://www.tradingview.com/chart/?symbol=MYX:${s.ticker.replace('.KL','')}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           title="Buka di TradingView"
@@ -444,87 +613,95 @@ const MarketScreener = ({ market, isActive, portfolio, handleTogglePortfolio }: 
 
 
 const App = () => {
-  const [activeMarket, setActiveMarket] = useState<'US' | 'MYR'>('MYR');
-  const [activeTab, setActiveTab] = useState<'SCREENS' | 'PORTFOLIO'>('SCREENS');
-  const [portfolio, setPortfolio] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'SCREENS' | 'WATCHLIST'>('SCREENS');
+  const [watchlist, setWatchlist] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState<string | null>(null);
 
-  const loadPortfolio = async () => {
+  const loadWatchlist = async () => {
     try {
-      const data = await fetchPortfolio();
+      const data = await fetchWatchlist();
       const list = data.results || [];
-      setPortfolio(list);
+      setWatchlist(list);
       
-      // Auto-refresh items with missing signal data when entering Portfolio tab
-      if (activeTab === 'PORTFOLIO') {
+      // Auto-refresh items with missing signal data when entering Watchlist tab
+      if (activeTab === 'WATCHLIST') {
         const needsUpdate = list.filter((p: any) => !p.signal || p.signal === 'HOLD' || p.signal === 'HOLDING' || p.signal === 'RESCAN');
         if (needsUpdate.length > 0) {
-          needsUpdate.forEach((p: any) => handleRefreshPortfolioTicker(p));
+          needsUpdate.forEach((p: any) => handleRefreshWatchlistTicker(p));
         }
       }
     } catch (e) {
-      console.error('Load Portfolio Error:', e);
+      console.error('Load Watchlist Error:', e);
     }
   };
 
   useEffect(() => {
-    loadPortfolio();
+    loadWatchlist();
   }, [activeTab]);
 
-  const handleTogglePortfolio = async (s: any) => {
-    const isSaved = portfolio.some(p => p.ticker === s.ticker);
+  const handleToggleWatchlist = async (s: any) => {
+    const isSaved = watchlist.some(p => p.ticker === s.ticker);
     try {
       if (isSaved) {
-        setPortfolio(prev => prev.filter(p => p.ticker !== s.ticker));
-        await removeFromPortfolio(s.ticker);
+        setWatchlist(prev => prev.filter(p => p.ticker !== s.ticker));
+        await removeFromWatchlist(s.ticker);
       } else {
         const newItem = {
           ticker: s.ticker,
           name: s.name,
-          entry_price: s.price || s.entry_price || 0,
-          target_price: s.swingTP || s.btstTarget || s.target_price || 0,
+          entry_price: s.price || 0,
+          target_price: s.targetPrice || s.target_price || 0,
           stop_loss: s.stopLoss || s.stop_loss || 0,
           signal: s.signal,
-          reason: s.reason,
+          reason: s.explanation || s.reason || '',
           isBTST: s.isBTST,
-          isCaution: s.isCaution
+          isCaution: s.isCaution,
+          suggested_entry: s.suggestedEntry || s.suggested_entry || 0,
+          entry_range_low: s.entryRangeLow || s.entry_range_low || 0,
+          entry_range_high: s.entryRangeHigh || s.entry_range_high || 0,
+          rr_ratio: s.rrRatio || s.rr_ratio || 0,
+          entry_status: s.entryStatus || s.entry_status || ''
         };
-        setPortfolio(prev => [...prev, newItem]);
-        await addToPortfolio(newItem);
+        setWatchlist(prev => [...prev, newItem]);
+        await addToWatchlist(newItem);
       }
     } catch (e) {
-      console.error('Toggle Portfolio Error:', e);
-      alert('Terdapat ralat teknikal semasa menyimpan Portfolio.');
-      loadPortfolio();
+      console.error('Toggle Watchlist Error:', e);
+      alert('Terdapat ralat teknikal semasa menyimpan Watchlist.');
+      loadWatchlist();
     }
   };
 
-  const handleRefreshPortfolioTicker = async (p: any) => {
+  const handleRefreshWatchlistTicker = async (p: any) => {
     if (refreshing === p.ticker) return;
     try {
       setRefreshing(p.ticker);
       const data = await fetchQuote(p.ticker);
       if (data && !data.error) {
-        setPortfolio(prev => {
-          const newList = prev.map(item => {
-            if (item.ticker === p.ticker) {
-              const updated = { 
-                  ...item, 
-                  current_price: Number(data.price),
-                  target_price: data.btstTarget || data.targetPrice || item.target_price || data.target_price,
-                  stop_loss: data.stopLoss || item.stop_loss || data.stop_loss,
-                  signal: (data.signal && data.signal !== 'NONE' && data.signal !== 'HOLD' && data.signal !== 'HOLDING') ? data.signal : (item.signal || 'RESCAN'),
-                  reason: data.reason || item.reason || 'Screener update complete.',
-                  isBTST: data.isBTST !== undefined ? data.isBTST : item.isBTST,
-                  isCaution: data.isCaution !== undefined ? data.isCaution : item.isCaution
-              };
-              // Persist to D1
-              addToPortfolio(updated).catch(console.error);
-              return updated;
-            }
-            return item;
-          });
-          return newList;
+        setWatchlist(prev => {
+          const exists = prev.find(item => item.ticker === p.ticker);
+          if (!exists) return prev;
+
+          const updatedItem = { 
+              ...exists, 
+              current_price: Number(data.price),
+              target_price: data.targetPrice || data.target_price || exists.target_price,
+              stop_loss: data.stopLoss || data.stop_loss || exists.stop_loss,
+              signal: (data.signal && data.signal !== 'NONE') ? data.signal : (exists.signal || 'RESCAN'),
+              reason: data.explanation || data.reason || exists.reason,
+              isBTST: data.isBTST !== undefined ? data.isBTST : exists.isBTST,
+              isCaution: data.isCaution !== undefined ? data.isCaution : exists.isCaution,
+              suggested_entry: data.suggestedEntry || data.suggested_entry || exists.suggested_entry,
+              entry_range_low: data.entryRangeLow || data.entry_range_low || exists.entry_range_low,
+              entry_range_high: data.entryRangeHigh || data.entry_range_high || exists.entry_range_high,
+              rr_ratio: data.currentRR || data.rrRatio || data.rr_ratio || exists.rr_ratio,
+              entry_status: data.entryStatus || data.entry_status || exists.entry_status
+          };
+
+          // Persist to D1 only after state is ready
+          addToWatchlist(updatedItem).catch(console.error);
+
+          return prev.map(item => item.ticker === p.ticker ? updatedItem : item);
         });
       }
     } catch (e) {
@@ -536,14 +713,13 @@ const App = () => {
 
   return (
     <div className="main-layout">
-      <div style={{position:'fixed', bottom: 10, right: 10, fontSize: 10, opacity: 0.3, zIndex: 9999}}>v3.7 · BTST Pro Engine</div>
+      <div style={{position:'fixed', bottom: 10, right: 10, fontSize: 10, opacity: 0.3, zIndex: 9999}}>v4.1 · Bursa Swing Engine</div>
       <div className="header">
-        <div className="logo-group"><TrendingUp size={24} color="var(--accent-cyan)" /><h1 style={{fontSize: 22}}>MarketWise <span style={{fontWeight: 400, opacity: 0.6}}>Screener</span></h1></div>
+        <div className="logo-group"><TrendingUp size={24} color="var(--accent-cyan)" /><h1 style={{fontSize: 22}}>MarketWise <span style={{fontWeight: 400, opacity: 0.6}}>Bursa</span></h1></div>
         <div className="top-nav">
-          <a className={`nav-link ${activeTab === 'SCREENS' && activeMarket === 'US' ? 'active' : ''}`} onClick={() => { setActiveTab('SCREENS'); setActiveMarket('US'); }}>US Market</a>
-          <a className={`nav-link ${activeTab === 'SCREENS' && activeMarket === 'MYR' ? 'active' : ''}`} onClick={() => { setActiveTab('SCREENS'); setActiveMarket('MYR'); }}>Bursa Malaysia</a>
-          <a className={`nav-link ${activeTab === 'PORTFOLIO' ? 'active' : ''}`} onClick={() => setActiveTab('PORTFOLIO')}>
-            <Briefcase size={16} style={{marginRight: 6}} /> My Portfolio
+          <a className={`nav-link ${activeTab === 'SCREENS' ? 'active' : ''}`} onClick={() => { setActiveTab('SCREENS'); }}>Screener</a>
+          <a className={`nav-link ${activeTab === 'WATCHLIST' ? 'active' : ''}`} onClick={() => setActiveTab('WATCHLIST')}>
+            <Briefcase size={16} style={{marginRight: 8}} /> My Watchlist
           </a>
         </div>
         <div style={{display:'flex', gap:'20px', alignItems:'center'}}>
@@ -551,23 +727,21 @@ const App = () => {
         </div>
       </div>
 
-      <MarketScreener market="MYR" isActive={activeTab === 'SCREENS' && activeMarket === 'MYR'} portfolio={portfolio} handleTogglePortfolio={handleTogglePortfolio} />
-      <MarketScreener market="US" isActive={activeTab === 'SCREENS' && activeMarket === 'US'} portfolio={portfolio} handleTogglePortfolio={handleTogglePortfolio} />
+      <MarketScreener market="MYR" isActive={activeTab === 'SCREENS'} watchlist={watchlist} handleToggleWatchlist={handleToggleWatchlist} />
 
-      <div style={{display: activeTab === 'PORTFOLIO' ? 'block' : 'none', width: '100%'}}>
+      <div style={{display: activeTab === 'WATCHLIST' ? 'block' : 'none', width: '100%'}}>
         <div className="screener-section">
           <div className="table-header">
             <div style={{display:'flex', alignItems:'center', gap: 15}}>
-               <h2>My Portfolio</h2>
+               <h2>My Watchlist</h2>
                <button 
                  className="tab-btn" 
-                 style={{background: 'var(--accent-cyan)', color: 'var(--bg-dark)', fontWeight: 700, border: 'none'}}
                  onClick={() => {
-                   const ids = portfolio.map(p => p.ticker);
+                   const ids = watchlist.map(p => p.ticker);
                    let i = 0;
                    const next = () => {
                      if (i < ids.length) {
-                       handleRefreshPortfolioTicker(portfolio.find(p => p.ticker === ids[i]));
+                       handleRefreshWatchlistTicker(watchlist.find(p => p.ticker === ids[i]));
                        i++;
                        setTimeout(next, 500);
                      }
@@ -583,28 +757,29 @@ const App = () => {
             <table>
               <thead>
                 <tr>
-                  <th style={{width:'20%'}}>SYMBOL</th>
-                  <th style={{width:'15%'}}>SIGNAL</th>
-                  <th style={{width:'15%'}}>ENTRY AVG</th>
-                  <th style={{width:'20%'}}>TARGET / SL</th>
-                  <th style={{width:'20%'}}>ANALYSIS</th>
-                  <th style={{width:'10%', textAlign:'center'}}>ACTION</th>
+                  <th className="hide-mobile" style={{width:'18%'}}>SYMBOL</th>
+                  <th className="hide-mobile" style={{width:'12%'}}>SIGNAL</th>
+                  <th style={{width:'12%', textAlign:'center'}}>ACTION</th>
+                  <th style={{width:'13%'}}>WATCH PRICE</th>
+                  <th style={{width:'20%'}}>TRADE PLAN</th>
+                  <th style={{width:'15%', textAlign:'center'}}>TOOLS</th>
                 </tr>
               </thead>
               <tbody>
-                {portfolio.length > 0 ? (
-                  portfolio.map((p, i) => (
-                    <tr key={i} style={{borderLeft: '4px solid #ffc107', background: 'rgba(255,193,7,0.02)'}}>
-                      <td>
+                {watchlist.length > 0 ? (
+                  watchlist.map((p: any) => (
+                    <tr key={p.ticker} style={{borderLeft: '4px solid #6366f1', background: 'rgba(99,102,241,0.03)'}}>
+                      <td className="hide-mobile">
                         <div className="symbol-cell">
-                          <div className="symbol-icon" style={{background: 'linear-gradient(135deg, #ffc107, #ff9800)'}}>{p.ticker[0]}</div>
+                          <div className="symbol-icon" style={{background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)', color: 'white'}}>{(p.name || p.ticker)[0]}</div>
                           <div style={{display:'flex', flexDirection:'column', gap: 2}}>
                             <strong style={{fontSize: 14, color: 'white'}}>{p.name}</strong>
                             <span style={{fontSize: 11, opacity: 0.5, fontWeight: 500}}>{p.ticker}</span>
+                            <span style={{fontSize: 9, opacity: 0.4, fontWeight: 700}}>VOL: {formatVol(p.avgVolumeRM || p.avg_volume_rm || 0)} RM</span>
                           </div>
                         </div>
                       </td>
-                      <td>
+                      <td className="hide-mobile">
                         <div style={{display:'flex', flexDirection: 'column', gap: 4}}>
                            <div style={{display:'flex', alignItems:'center', gap: 6, flexWrap: 'wrap'}}>
                              {(!p.signal || p.signal === 'NONE' || p.signal === 'HOLD' || p.signal === 'HOLDING' || p.signal === 'RESCAN') ? (
@@ -614,61 +789,40 @@ const App = () => {
                                  <span className={`signal-badge signal-${p.signal.split('-')[0]}`}>{p.signal}</span>
                                  {p.isBTST && <span className="btst-badge">BTST</span>}
                                  {p.signal === 'SWING' && <span className="swing-badge">SWING PRO</span>}
+                                 {p.confidence !== undefined && <span style={{fontSize: 9, padding: '2px 4px', background: 'rgba(16,185,129,0.1)', color:'#10b981', borderRadius: 4, fontWeight: 600}}>{p.confidence}%</span>}
                                  {p.isCaution && <AlertTriangle size={14} color="#FFD700" />}
                                </>
                              )}
                            </div>
                         </div>
                       </td>
+                      <td style={{textAlign:'center'}}>
+                        <ActionBadge p={p} />
+                      </td>
                       <td style={{fontWeight: 700}}>
                           <span style={{fontSize: 10, opacity: 0.5, display:'block', marginBottom: 2}}>Avg: {Number(p.entry_price || 0).toFixed(3)}</span>
                           <span style={{color: (p.current_price || p.price) > p.entry_price ? '#00FF41' : '#ff5252'}}>
-                            Live: {(activeMarket as any)==='US'?'$':'RM'} {Number(p.current_price || p.entry_price || p.price || 0).toFixed(3)}
+                            Live: RM {Number(p.current_price || p.entry_price || p.price || 0).toFixed(3)}
                           </span>
                       </td>
-                      <td>
-                        {(!p.signal || (SIGNAL_RANK[p.signal] ?? 0) < 4) ? (
-                          <div style={{display:'flex', flexDirection:'column', gap: 4}}>
-                            {p.isBTST ? (
-                              <>
-                                <div style={{fontSize: 10, fontWeight: 700, color: '#fbbf24'}}>BTST TP: {Number(p.target_price || 0).toFixed(3)}</div>
-                                <div style={{fontSize: 10, fontWeight: 700, color: '#ff5252'}}>BTST CL: {Number(p.stop_loss || 0).toFixed(3)}</div>
-                              </>
-                            ) : (
-                              <>
-                                {p.target_price > 0 && <div style={{fontSize: 11, fontWeight: 700, color: '#4facfe'}}>🎯 TP (Res): {Number(p.target_price).toFixed(3)}</div>}
-                                {p.stop_loss > 0 && <div style={{fontSize: 11, fontWeight: 700, color: '#ff5252'}}>🛑 SL (Sup): {Number(p.stop_loss).toFixed(3)}</div>}
-                                {(!p.target_price && !p.stop_loss) && <span style={{opacity:0.2, fontSize:12}}>—</span>}
-                              </>
-                            )}
-                          </div>
-                        ) : (
-                          <div style={{background: 'rgba(239, 68, 68, 0.1)', padding: '4px 8px', borderRadius: 4, display:'inline-block'}}>
-                            <span style={{color:'#ef4444', fontSize: 10, fontWeight: 700, letterSpacing: '0.5px'}}>EXIT STRATEGY</span>
-                          </div>
-                        )}
-                      </td>
-                      <td>
-                          <span style={{fontSize:11, opacity: 0.8, lineHeight: 1.5}}>{p.reason || p.analysis || 'Fetching intelligence...'}</span>
+                      <td style={{padding: '12px 0'}}>
+                        <TradePlanCell p={p} />
                       </td>
                       <td style={{textAlign:'center'}}>
                         <div style={{display:'flex', alignItems:'center', justifyContent:'center', gap: 12}}>
-                          <button className={`icon-btn-refresh ${refreshing === p.ticker ? 'active' : ''}`} onClick={() => handleRefreshPortfolioTicker(p)} disabled={refreshing === p.ticker} title="Refresh Live Price">
+                          <button className={`icon-btn-refresh ${refreshing === p.ticker ? 'active' : ''}`} onClick={() => handleRefreshWatchlistTicker(p)} disabled={refreshing === p.ticker} title="Refresh Live Price">
                             <Zap size={14} className={refreshing === p.ticker ? 'loading-spinner' : ''} />
                           </button>
                           <button 
                             className="icon-btn-refresh" 
                             style={{borderColor: 'rgba(239, 68, 68, 0.3)', color: '#ef4444'}} 
-                            onClick={() => handleTogglePortfolio(p)}
-                            title="Buang dari Portfolio"
+                            onClick={() => handleToggleWatchlist(p)}
+                            title="Buang dari Watchlist"
                           >
                             <Star size={14} fill="#ef4444" />
                           </button>
                           <a
-                            href={activeMarket === 'MYR'
-                              ? `https://www.tradingview.com/chart/?symbol=MYX:${p.ticker.replace('.KL','')}`
-                              : `https://www.tradingview.com/chart/?symbol=${p.ticker}`
-                            }
+                            href={`https://www.tradingview.com/chart/?symbol=MYX:${p.ticker.replace('.KL','')}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             style={{
@@ -686,7 +840,7 @@ const App = () => {
                     </tr>
                   ))
                 ) : (
-                  <tr><td colSpan={6} style={{textAlign:'center', padding: 60, opacity: 0.5}}>Portfolio kosong. Klik ⭐ pada screening untuk simpan.</td></tr>
+                  <tr><td colSpan={6} style={{textAlign:'center', padding: 60, opacity: 0.5}}>Watchlist kosong. Klik ⭐ pada screening untuk simpan.</td></tr>
                 )}
               </tbody>
             </table>
