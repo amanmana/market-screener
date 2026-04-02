@@ -257,7 +257,7 @@ const TradePlanCell = ({ p, riskProfile }: any) => {
         const sl = p.stopLoss || p.stop_loss || 0;
         const tp = p.targetPrice || p.target_price || 0;
         const isActionable = ['premium_actionable','actionable','ideal','acceptable'].includes(statusRaw);
-        if (!isActionable || !entry || !sl) return null;
+        if (!isActionable || !entry || !sl || p.tradeDecision === 'AVOID') return null;
         const sz = calcSizing(entry, sl, tp, riskProfile);
         if (!sz) return null;
         if (sz.lots === 0) return (
