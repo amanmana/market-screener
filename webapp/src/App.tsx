@@ -4,8 +4,11 @@ import {
   AlertTriangle, Zap, Play, Square, RotateCcw, LineChart, Star, Briefcase
 } from 'lucide-react';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
-import { fetchScreener, fetchQuote, addToWatchlist, fetchWatchlist, removeFromWatchlist, fetchStockList } from './api';
-import { X, ChevronRight, Info } from 'lucide-react';
+import { 
+  fetchScreener, fetchQuote, addToWatchlist, fetchWatchlist, 
+  removeFromWatchlist, fetchStockList, fetchRiskSettings, updateRiskSettings 
+} from './api';
+import { X, ChevronRight, Info, Settings, ShieldCheck, DollarSign, Percent } from 'lucide-react';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
@@ -90,7 +93,27 @@ const RankBadge = ({ rank, score }: { rank: string, score: number }) => {
   );
 };
 
-const TradePlanCell = ({ p }: any) => {
+// Frontend sizing calculator (mirrors backend logic)
+const calcSizing = (entry: number, stop: number, target: number, risk: any) => {
+  if (!entry || !stop || entry <= stop || !risk?.account_size) return null;
+  const accountSize = Number(risk.account_size);
+  const riskPct = Number(risk.risk_per_trade_percent) || 1.5;
+  const maxPct = Number(risk.max_capital_per_stock_percent) || 20;
+  const riskBudget = (accountSize * riskPct) / 100;
+  const maxCapital = (accountSize * maxPct) / 100;
+  const riskPerShare = entry - stop;
+  let shares = Math.floor(riskBudget / riskPerShare);
+  if (shares * entry > maxCapital) shares = Math.floor(maxCapital / entry);
+  const lots = Math.floor(shares / 100);
+  const finalShares = lots * 100;
+  if (lots === 0) return { lots: 0, capital: 0, risk: 0, profit: 0, minCapital: entry * 100 };
+  const capital = finalShares * entry;
+  const riskAmt = finalShares * riskPerShare;
+  const profitAmt = target > entry ? finalShares * (target - entry) : 0;
+  return { lots, capital: Number(capital.toFixed(2)), risk: Number(riskAmt.toFixed(2)), profit: Number(profitAmt.toFixed(2)) };
+};
+
+const TradePlanCell = ({ p, riskProfile }: any) => {
   const signal = p?.signal || 'NONE';
   const isExit = (SIGNAL_RANK[signal] ?? 0) >= 4; 
   
@@ -197,12 +220,51 @@ const TradePlanCell = ({ p }: any) => {
             fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.4px'
          }}>{getFriendlyStatus(statusRaw)}</span>
       </div>
+
+      {/* POSITION SIZING — calculated live from current riskProfile */}
+      {(() => {
+        const entry = p.suggestedEntry || p.entryRangeLow || p.price || 0;
+        const sl = p.stopLoss || p.stop_loss || 0;
+        const tp = p.targetPrice || p.target_price || 0;
+        const isActionable = ['premium_actionable','actionable','ideal','acceptable'].includes(statusRaw);
+        if (!isActionable || !entry || !sl) return null;
+        const sz = calcSizing(entry, sl, tp, riskProfile);
+        if (!sz) return null;
+        if (sz.lots === 0) return (
+          <div style={{ marginTop: 6, padding: '4px 8px', borderRadius: 6,
+            background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.1)',
+            fontSize: 9, color: '#fca5a5', textAlign: 'center' }}>
+            Modal kurang — 1 lot min RM {sz.minCapital?.toLocaleString()}
+          </div>
+        );
+        return (
+          <div style={{ marginTop: 6, padding: '6px 8px', borderRadius: 6,
+            background: 'rgba(16,185,129,0.05)', border: '1px dashed rgba(16,185,129,0.2)',
+            display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 700 }}>SUGGESTED</span>
+              <span style={{ fontSize: 12, fontWeight: 900, color: '#10b981' }}>{sz.lots} LOTS</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9 }}>
+              <span style={{ opacity: 0.5 }}>Capital: RM {sz.capital.toLocaleString()}</span>
+              <span style={{ color: '#f87171', fontWeight: 700 }}>Risk: RM {sz.risk}</span>
+            </div>
+            {sz.profit > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9,
+                borderTop: '1px solid rgba(16,185,129,0.15)', paddingTop: 3 }}>
+                <span style={{ color: '#10b981', fontWeight: 700 }}>Potential Profit</span>
+                <span style={{ color: '#10b981', fontWeight: 900 }}>+RM {sz.profit.toLocaleString()}</span>
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 };
 
 // MARKET SCREENER COMPONENT (BURSA MALAYSIA ONLY)
-const MarketScreener = ({ isActive, watchlist, handleToggleWatchlist }: any) => {
+const MarketScreener = ({ isActive, watchlist, handleToggleWatchlist, riskProfile }: any) => {
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const market = 'MYR';
   
@@ -566,7 +628,7 @@ const MarketScreener = ({ isActive, watchlist, handleToggleWatchlist }: any) => 
                   </td>
                   <td style={{fontWeight:600}}>RM {s.price?.toFixed(s.price<1?3:2)}</td>
                   <td style={{padding: '12px 8px'}}>
-                      <TradePlanCell p={s} />
+                      <TradePlanCell p={s} riskProfile={riskProfile} />
                   </td>
                   <td style={{textAlign:'center', paddingRight: 10}}>
                     <div style={{display:'flex', alignItems:'center', justifyContent:'center', gap: 10}}>
@@ -617,6 +679,39 @@ const App = () => {
   const [activeTab, setActiveTab] = useState<'SCREENS' | 'WATCHLIST'>('SCREENS');
   const [watchlist, setWatchlist] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState<string | null>(null);
+  const [showRiskSettings, setShowRiskSettings] = useState(false);
+  const [riskProfile, setRiskProfile] = useState({
+    account_size: 20000,
+    risk_per_trade_percent: 1.5,
+    max_capital_per_stock_percent: 20
+  });
+
+  // Load Risk Profile from Server (Multi-device sync)
+  useEffect(() => {
+    const loadRisk = async () => {
+      try {
+        const data = await fetchRiskSettings();
+        if (data && data.account_size) {
+          setRiskProfile(data);
+        }
+      } catch (e) {
+        console.error('Failed to load risk settings:', e);
+      }
+    };
+    loadRisk();
+  }, []);
+
+  const handleUpdateRisk = async (newProfile: any) => {
+    try {
+      await updateRiskSettings(newProfile);
+      setRiskProfile(newProfile);
+      setShowRiskSettings(false);
+      // Trigger a light refresh if on watchlist to update sizing
+      if (activeTab === 'WATCHLIST') loadWatchlist();
+    } catch (e) {
+      alert('Gagal mengemaskini profil risiko.');
+    }
+  };
   
   // Search & Health Check State
   const [searchTerm, setSearchTerm] = useState('');
@@ -834,7 +929,25 @@ const App = () => {
             <Briefcase size={16} style={{marginRight: 8}} /> My Watchlist
           </a>
         </div>
-        <div style={{display:'flex', gap:'20px', alignItems:'center'}}>
+        <div style={{display:'flex', gap:'12px', alignItems:'center'}}>
+          <button 
+            onClick={() => setShowRiskSettings(true)}
+            style={{
+              padding: '8px 12px', background: 'rgba(99,102,241,0.1)', 
+              border: '1px solid rgba(99,102,241,0.3)', borderRadius: 10,
+              color: '#818cf8', display: 'flex', alignItems: 'center', gap: 8,
+              cursor: 'pointer', transition: 'all 0.2s'
+            }}
+            onMouseOver={e => e.currentTarget.style.background = 'rgba(99,102,241,0.2)'}
+            onMouseOut={e => e.currentTarget.style.background = 'rgba(99,102,241,0.1)'}
+          >
+            <ShieldCheck size={16} />
+            <div style={{textAlign: 'left'}}>
+              <div style={{fontSize: 9, opacity: 0.6, fontWeight: 700}}>RISK PROFILE</div>
+              <div style={{fontSize: 10, fontWeight: 900}}>RM {riskProfile.account_size.toLocaleString()}</div>
+            </div>
+            <Settings size={14} style={{marginLeft: 4, opacity: 0.5}} />
+          </button>
           <div className="search-box" style={{position:'relative'}} ref={searchRef}>
             <Search size={18} />
             <input 
@@ -896,7 +1009,8 @@ const App = () => {
         </div>
       </div>
 
-      <MarketScreener market="MYR" isActive={activeTab === 'SCREENS'} watchlist={watchlist} handleToggleWatchlist={handleToggleWatchlist} />
+      <MarketScreener market="MYR" isActive={activeTab === 'SCREENS'} watchlist={watchlist} handleToggleWatchlist={handleToggleWatchlist} riskProfile={riskProfile} />
+
 
       <div style={{display: activeTab === 'WATCHLIST' ? 'block' : 'none', width: '100%'}}>
         <div className="screener-section">
@@ -986,7 +1100,7 @@ const App = () => {
                           </span>
                       </td>
                       <td style={{padding: '12px 0'}}>
-                        <TradePlanCell p={p} />
+                        <TradePlanCell p={p} riskProfile={riskProfile} />
                       </td>
                       <td style={{textAlign:'center'}}>
                         <div style={{display:'flex', alignItems:'center', justifyContent:'center', gap: 12}}>
@@ -1103,7 +1217,7 @@ const App = () => {
                                 <Info size={16} color="var(--accent-cyan)" />
                                 <span style={{fontSize: 13, fontWeight: 700, color: 'white'}}>Trade Plan Insight</span>
                             </div>
-                            <TradePlanCell p={healthData} />
+                            <TradePlanCell p={healthData} riskProfile={riskProfile} />
                             <div style={{marginTop: 16, padding: 12, background:'rgba(0,0,0,0.2)', borderRadius: 12, fontSize: 11, lineHeight: 1.5, color: 'rgba(255,255,255,0.7)'}}>
                                 {healthData.explanation || healthData.reason || 'Tiada analisa tambahan untuk kaunter ini.'}
                             </div>
@@ -1137,6 +1251,101 @@ const App = () => {
                 ) : (
                     <div style={{padding: '40px 0', textAlign:'center', opacity: 0.5}}>Gagal memuatkan data. Sila cuba lagi.</div>
                 )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RISK SETTINGS MODAL */}
+      {showRiskSettings && (
+        <div style={{
+          position:'fixed', inset: 0, background: 'rgba(0, 0, 0, 0.4)', 
+          display:'flex', alignItems:'center', justifyContent:'center', zIndex: 11000,
+          backdropFilter: 'blur(12px)'
+        }}>
+          <div style={{
+            width: '90%', maxWidth: 400, background: '#0a0b14', 
+            borderRadius: 24, border: '1px solid rgba(255,255,255,0.1)',
+            overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.8)'
+          }}>
+            <div style={{
+                padding: '24px', background: 'linear-gradient(to bottom, rgba(99,102,241,0.1), transparent)',
+                borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+            }}>
+                <div style={{display:'flex', alignItems:'center', gap: 12}}>
+                  <ShieldCheck size={24} color="#818cf8" />
+                  <h2 style={{margin: 0, fontSize: 18, color: 'white'}}>Setup Pengurusan Risiko</h2>
+                </div>
+                <button onClick={() => setShowRiskSettings(false)} style={{background:'rgba(255,255,255,0.05)', border:0, color:'white', padding: 8, borderRadius: 12, cursor:'pointer'}}>
+                    <X size={20} />
+                </button>
+            </div>
+            
+            <div style={{padding: 24, display:'flex', flexDirection:'column', gap: 20}}>
+                <div style={{display:'flex', flexDirection:'column', gap: 8}}>
+                  <label style={{fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.6)', display:'flex', alignItems:'center', gap: 6}}>
+                    <DollarSign size={14} /> JUMLAH MODAL (MYR)
+                  </label>
+                  <input 
+                    type="number"
+                    defaultValue={riskProfile.account_size}
+                    onBlur={(e) => setRiskProfile(prev => ({...prev, account_size: Number(e.target.value)}))}
+                    style={{
+                      background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                      borderRadius: 12, padding: '12px 16px', color: 'white', fontSize: 16, fontWeight: 800
+                    }}
+                  />
+                </div>
+
+                <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap: 16}}>
+                   <div style={{display:'flex', flexDirection:'column', gap: 8}}>
+                    <label style={{fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.6)', display:'flex', alignItems:'center', gap: 6}}>
+                      <Percent size={14} /> RISK PER TRADE
+                    </label>
+                    <input 
+                      type="number" step="0.1"
+                      defaultValue={riskProfile.risk_per_trade_percent}
+                      onBlur={(e) => setRiskProfile(prev => ({...prev, risk_per_trade_percent: Number(e.target.value)}))}
+                      style={{
+                        background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 12, padding: '12px', color: 'white', fontWeight: 700
+                      }}
+                    />
+                  </div>
+                  <div style={{display:'flex', flexDirection:'column', gap: 8}}>
+                    <label style={{fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.6)', display:'flex', alignItems:'center', gap: 6}}>
+                      <Zap size={14} /> MAX SIZE (%)
+                    </label>
+                    <input 
+                      type="number"
+                      defaultValue={riskProfile.max_capital_per_stock_percent}
+                      onBlur={(e) => setRiskProfile(prev => ({...prev, max_capital_per_stock_percent: Number(e.target.value)}))}
+                      style={{
+                        background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 12, padding: '12px', color: 'white', fontWeight: 700
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{
+                  padding: '12px', background: 'rgba(163,163,163,0.05)', borderRadius: 12,
+                  fontSize: 12, color: 'rgba(255,255,255,0.4)', lineHeight: 1.5, border: '1px solid rgba(255,255,255,0.02)'
+                }}>
+                  <Info size={14} style={{marginBottom: 4, display:'block'}} />
+                  Setiap gandaan lot akan mematuhi had rugi tunai RM {(riskProfile.account_size * riskProfile.risk_per_trade_percent / 100).toFixed(0)} anda.
+                </div>
+
+                <button 
+                  onClick={() => handleUpdateRisk(riskProfile)}
+                  style={{
+                    width: '100%', padding: '14px', background: '#818cf8', color: 'white',
+                    borderRadius: 12, fontWeight: 800, border: 0, cursor: 'pointer',
+                    boxShadow: '0 10px 20px rgba(99,102,241,0.3)'
+                  }}
+                >
+                  SIMPAN TETAPAN
+                </button>
             </div>
           </div>
         </div>

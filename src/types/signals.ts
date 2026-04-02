@@ -107,6 +107,21 @@ export interface SignalResult {
   type?: SignalType; 
   reason?: string;
   haStatus?: '2_GREEN' | '1_GREEN' | 'RED' | 'INSUFFICIENT' | 'UNKNOWN';
+
+  // NEW: Position Sizing & Risk Management
+  sizing?: SizingMetadata | null;
+  riskScore?: number;
+}
+
+export interface SizingMetadata {
+  riskPerShare: number;
+  suggestedPositionShares: number;
+  suggestedPositionLots: number;
+  capitalRequired: number;
+  riskAmount: number;
+  fitsRiskBudget: boolean;
+  fitsCapitalBudget: boolean;
+  explanation?: string;
 }
 
 export interface WatchlistBatchResponse {

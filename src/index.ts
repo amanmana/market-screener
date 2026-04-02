@@ -107,13 +107,21 @@ export default {
           ctx.waitUntil(env.DB.batch(syncRows.map(r => stmt.bind(r.ticker_full, r.price_date, r.open, r.high, r.low, r.close, r.volume))));
         }
 
-        // 3. Process Batch
+        // 3. (NEW) Fetch Risk Settings for Batch Sizing
+        const { results: riskRows } = await env.DB.prepare(`SELECT * FROM risk_settings WHERE id = 1`).all();
+        const risk = riskRows?.[0] || { account_size: 20000, risk_per_trade_percent: 1.5, max_capital_per_stock_percent: 20 };
+        const riskConfig = {
+          accountSize: Number(risk.account_size),
+          riskPctPerTrade: Number(risk.risk_per_trade_percent),
+          maxPositionPct: Number(risk.max_capital_per_stock_percent)
+        };
+
+        // 4. Process Batch
         const finalResults: any[] = [];
         for (const stock of stocks) {
           const history = dataCache.get(stock.ticker_full) || [];
-          const sig = await getLatestSignal([...history].reverse(), false);
+          const sig = await getLatestSignal([...history].reverse(), false, riskConfig);
           
-          // MOVED: No more early exit for filter reasons. Deliver everything so the UI date is accurate.
           finalResults.push({
             ticker: stock.ticker_full,
             name: stock.company_name,
@@ -122,7 +130,7 @@ export default {
             reason: sig.explanation || sig.rejectionReason,
             targetPrice: sig.targetPrice,
             stopLoss: sig.stopLoss,
-            avgVolumeRM: sig.avgTradedValue20 // Map the correct field
+            avgVolumeRM: sig.avgTradedValue20
           });
         }
 
@@ -220,10 +228,17 @@ export default {
             price_date: new Date().toISOString() 
         };
         
-        // 4. Run Analysis Engine
-        // Convert supaCandles to have ticker_full for the engine
+        // 4. Analysis with Dynamic Risk Profile
+        const { results: riskRows } = await env.DB.prepare(`SELECT * FROM risk_settings WHERE id = 1`).all();
+        const risk = riskRows?.[0] || { account_size: 20000, risk_per_trade_percent: 1.5, max_capital_per_stock_percent: 20 };
+        const riskConfig = {
+          accountSize: Number(risk.account_size),
+          riskPctPerTrade: Number(risk.risk_per_trade_percent),
+          maxPositionPct: Number(risk.max_capital_per_stock_percent)
+        };
+
         const engineHistory = candles.map(c => ({ ...c, ticker_full: ticker }));
-        const sig = await getLatestSignal([virtual, ...engineHistory.slice(1)].reverse(), true);
+        const sig = await getLatestSignal([virtual, ...engineHistory.slice(1)].reverse(), true, riskConfig);
 
         // 5. Calculate Change
         const prevClose = candles[0].close;
@@ -284,6 +299,25 @@ export default {
         return new Response(JSON.stringify({ results: (results || []).map((r: any) => ({ ...r, isBTST: r.is_btst === 1 })) }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
+      }
+
+      // ROUTE: Risk Settings Management (Multi-device Sync)
+      if (url.pathname === '/api/risk/settings') {
+        const { results } = await env.DB.prepare(`SELECT * FROM risk_settings WHERE id = 1`).all();
+        return new Response(JSON.stringify(results?.[0] || {}), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      if (url.pathname === '/api/risk/update' && request.method === 'POST') {
+        const p: any = await request.json();
+        await env.DB.prepare(
+          `UPDATE risk_settings SET 
+            account_size = ?, 
+            risk_per_trade_percent = ?, 
+            max_capital_per_stock_percent = ?,
+            updated_at = CURRENT_TIMESTAMP
+           WHERE id = 1`
+        ).bind(p.account_size, p.risk_per_trade_percent, p.max_capital_per_stock_percent).run();
+        return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
       }
 
       return new Response('Not Found', { status: 404, headers: corsHeaders });

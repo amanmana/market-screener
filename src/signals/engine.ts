@@ -9,6 +9,7 @@ import { checkWarn } from "./strategies/warn";
 import { checkPreWarn } from "./strategies/preWarn";
 import { calculateLiquidity } from "../utils/liquidity";
 import { calculateHeikinAshi } from "../utils/indicators";
+import { calculatePositionSize } from "../utils/trading";
 
 /**
  * NEW: Balanced Pyramid Ranking Model
@@ -92,7 +93,7 @@ function getRankLabel(res: SignalResult, score: number): string {
     return 'D';
 }
 
-export async function getLatestSignal(candles: Candle[], isLive: boolean = false): Promise<SignalResult> {
+export async function getLatestSignal(candles: Candle[], isLive: boolean = false, riskConfig?: any): Promise<SignalResult> {
   if (!candles || candles.length === 0) {
     return {
       signal: SignalType.NONE,
@@ -173,11 +174,18 @@ export async function getLatestSignal(candles: Candle[], isLive: boolean = false
   // Add liquidity metadata
   Object.assign(output, liq);
 
-  // Enhance with Balanced Pyramid Ranking
+  // Enhance with Balanced Pyramid Ranking & Sizing
   const { score, breakdown } = calculateSetupScore(output);
   output.setupScore = score;
   output.scoreBreakdown = breakdown;
   output.setupRank = getRankLabel(output, score);
+
+  // Position Sizing (Only for actionable setups)
+  if (['premium_actionable', 'actionable', 'ideal', 'acceptable'].includes(output.entryStatus || '')) {
+    const sizingConfig = { ...riskConfig, targetPrice: output.targetPrice };
+    output.sizing = calculatePositionSize(output.suggestedEntry || current.close, output.stopLoss || 0, sizingConfig);
+  }
+
   output.confirmed = !isLive;
   output.previewOnly = isLive;
   output.timestamp = current.price_date;

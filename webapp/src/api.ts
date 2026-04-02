@@ -57,3 +57,19 @@ export async function fetchWatchlist() {
   if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
   return res.json();
 }
+
+export async function fetchRiskSettings() {
+  const res = await fetch(`${API_BASE}/risk/settings`);
+  if (!res.ok) throw new Error(`Fetch risk failed: ${res.status}`);
+  return res.json();
+}
+
+export async function updateRiskSettings(payload: any) {
+  const res = await fetch(`${API_BASE}/risk/update`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) throw new Error(`Update risk failed: ${res.status}`);
+  return res.json();
+}
