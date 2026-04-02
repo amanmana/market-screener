@@ -43,14 +43,23 @@ const formatVol = (val: number) => {
 
 const ActionBadge = ({ p }: { p: any }) => {
   const signal = (p?.signal || 'NONE').toUpperCase();
+  const isExit = ['SELL', 'WARN', 'PRE-WARN'].includes(signal);
+
+  {/* Prioritize overall Trade Decision logic (from backend) */}
+  if (p.tradeDecision) {
+     if (p.tradeDecision === 'AVOID') return <span style={{display:'inline-block', background:'#ef4444', color:'white', padding:'2px 8px', borderRadius:4, fontSize:10, fontWeight:900, border:'1px solid #ff5252'}}>AVOID</span>;
+     if (p.tradeDecision === 'ENTER') return <span style={{background:'#10b981', color:'white', padding:'2px 8px', borderRadius:4, fontSize:10, fontWeight:900, boxShadow:'0 0 10px rgba(16,185,129,0.3)'}}>ENTER</span>;
+     if (p.tradeDecision === 'WAIT') return <span style={{background:'rgba(255,255,255,0.05)', color:'rgba(255,255,255,0.4)', padding:'2px 8px', borderRadius:4, fontSize:10, fontWeight:900, border:'1px solid rgba(255,255,255,0.05)'}}>WAIT</span>;
+  }
+
+  {/* Otherwise fallback to legacy logic */}
+  if (isExit) return <span style={{display:'inline-block', background:'#ef4444', color:'white', padding:'2px 8px', borderRadius:4, fontSize:10, fontWeight:900, border:'1px solid #ff5252'}}>EXIT</span>;
+  if (signal === 'NONE') return <span style={{background:'rgba(255,255,255,0.05)', color:'rgba(255,255,255,0.3)', padding:'2px 8px', borderRadius:4, fontSize:10}}>WAIT</span>;
+
   const price = Number(p.current_price || p.price || 0);
   const entryLow = Number(p.entryRangeLow || p.entry_range_low || 0);
   const entryHigh = Number(p.entryRangeHigh || p.entry_range_high || 0);
   const haStatus = p.haStatus || 'UNKNOWN';
-  const isExit = ['SELL', 'WARN', 'PRE-WARN'].includes(signal);
-
-  if (isExit) return <span style={{display:'inline-block', background:'#ef4444', color:'white', padding:'2px 8px', borderRadius:4, fontSize:10, fontWeight:900, border:'1px solid #ff5252'}}>EXIT</span>;
-  if (signal === 'NONE') return <span style={{background:'rgba(255,255,255,0.05)', color:'rgba(255,255,255,0.3)', padding:'2px 8px', borderRadius:4, fontSize:10}}>WAIT</span>;
 
   // Logic for Action with HA Confirmation
   // 2_GREEN means both current and previous HA candles are green.
@@ -926,7 +935,10 @@ const App = () => {
               entry_range_high: data.entryRangeHigh || data.entry_range_high || exists.entry_range_high,
               rr_ratio: data.currentRR || data.rrRatio || data.rr_ratio || exists.rr_ratio,
               entry_status: data.entryStatus || data.entry_status || exists.entry_status,
-              avg_volume_rm: data.avgVolumeRM || data.avg_volume_rm || exists.avg_volume_rm
+              avg_volume_rm: data.avgVolumeRM || data.avg_volume_rm || exists.avg_volume_rm,
+              tradeDecision: data.tradeDecision || exists.tradeDecision,
+              decisionReason: data.decisionReason || exists.decisionReason,
+              decisionConfidence: data.decisionConfidence || exists.decisionConfidence
           };
 
           // Persist to D1 only after state is ready
