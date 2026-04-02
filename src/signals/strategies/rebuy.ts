@@ -1,6 +1,6 @@
 import { Candle } from "../../types/market";
 import { SignalType, SignalResult } from "../../types/signals";
-import { calculateSMA, detectPivotLevels, calculateStochastic, findNearestResistance } from "../../utils/indicators";
+import { calculateSMA, detectStructuralPivots, calculateStochastic, findMeaningfulResistance } from "../../utils/indicators";
 import { calculateRR, getBursaTick, roundToTick, analyzeEntry, getExtensionPercent } from "../../utils/trading";
 
 export function checkRebuy(candles: Candle[]): SignalResult {
@@ -54,25 +54,24 @@ export function checkRebuy(candles: Candle[]): SignalResult {
       return base;
   }
 
-  // 2. LEVELS
-  const { resistance, allResistance, allSupport } = detectPivotLevels(closes, highs, lows, 5);
-  const target = findNearestResistance(currentPrice, allResistance, resistance);
+  // 2. LEVELS - Structural Rebuy Targets
+  const { target } = findMeaningfulResistance(currentPrice, highs, lows, 'CONTINUATION');
   const tick = getBursaTick(currentPrice);
   
-  // Pivot support or SMA20
-  const structuralLow = allSupport.length > 0 ? allSupport[allSupport.length - 1] : sma20;
-  const stopLoss = roundToTick(Math.min(structuralLow, sma20) * 0.985, tick);
-
-  // VALIDATION: Target must be above current price by at least 1% to be actionable
-  if (target <= currentPrice * 1.01) {
-      return {
-        ...base,
-        targetPrice: target,
-        stopLoss,
-        entryStatus: 'late_setup', 
-        rejectionReason: 'price_at_resistance'
-      };
+  // 3. TARGET VALIDATION (Hard Rule 5)
+  if (!target) {
+     return {
+         ...base,
+         entryStatus: 'incomplete_trade_plan',
+         rejectionReason: 'no_meaningful_resistance_above',
+         explanation: 'No clear prior swing highs found for pullback continuation.'
+     };
   }
+
+  // Pivot support or SMA20
+  const { support: sPivots } = detectStructuralPivots(highs, lows, 5);
+  const structuralLow = sPivots.length > 0 ? sPivots[sPivots.length - 1].price : sma20;
+  const stopLoss = roundToTick(Math.min(structuralLow, sma20) * 0.985, tick);
 
   // REBUY thresholds: ideal=1.8 (short term), min=1.3
   const entry = analyzeEntry(currentPrice, target, stopLoss, 1.8, 1.3);
@@ -90,13 +89,17 @@ export function checkRebuy(candles: Candle[]): SignalResult {
     ...base,
     signal: SignalType.REBUY,
     ...entry,
-    stopLoss,
+    entryStatus: entry.entryStatus,
     targetPrice: target,
-    rrRatio: calculateRR(entry.suggestedEntry || currentPrice, target, stopLoss),
+    stopLoss: stopLoss,
+    currentRR: entry.currentRR,
+    rrRatio: entry.currentRR, 
     supportLevel: sma20,
     resistanceLevel: target,
     confidence: 75,
-    explanation: `Pullback to SMA20 in healthy trend. Momentum recovery check.`,
+    explanation: entry.entryStatus === 'late_setup'
+        ? `Pullback recovery, but resistance at RM ${target.toFixed(3)} is too close.`
+        : `Pullback recovery toward swing high at RM ${target.toFixed(3)}.`,
     confirmed: true
   };
 }

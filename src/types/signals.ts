@@ -10,9 +10,14 @@ export enum SignalType {
 }
 
 export type EntryStatus = 
+  | 'premium_actionable' // Ideal + Strong RR
+  | 'actionable'         // Acceptable + Good RR
+  | 'watch_only'         // Valid structure, but weak RR
+  | 'late_setup'         // Too far from entry
+  | 'reject_low_rr'      // RR < 1.0
+  | 'reject_limited_upside' // Target too close
   | 'ideal' 
   | 'acceptable' 
-  | 'late_setup' 
   | 'waiting_confirmation' 
   | 'incomplete_trade_plan' 
   | 'insufficient_data'

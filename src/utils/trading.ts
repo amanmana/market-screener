@@ -20,6 +20,17 @@ export const calculateEntryForRR = (target: number, stop: number, rr: number): n
     return (target + rr * stop) / (1 + rr);
 };
 
+export const getBursaTick = (price: number): number => {
+    if (price < 1) return 0.005; 
+    if (price < 10) return 0.01; 
+    if (price < 100) return 0.02;
+    return 0.10;
+};
+
+export const roundToTick = (val: number, tick: number): number => {
+    return Math.round(val / tick) * tick;
+};
+
 /**
  * Comprehensive Entry Analysis (RR-Based)
  */
@@ -37,19 +48,23 @@ export const analyzeEntry = (
         return { 
             entryStatus: (target || stop) ? 'incomplete_trade_plan' : 'no_active_setup' as EntryStatus,
             currentRR: 0,
-            suggestedEntry: 0,
+            suggestedEntry: currentPrice,
             targetPrice: target || 0,
-            stopLoss: stop || 0
+            stopLoss: stop || 0,
+            rejectionReason: (target || stop) ? 'missing_tp_or_sl' : 'no_levels_found'
         };
     }
-
+    
+    // 0. SAFETY: Inconsistent TP/SL
     if (target <= stop) {
         return {
-            entryStatus: 'invalid' as EntryStatus,
-            currentRR: 0,
-            suggestedEntry: 0,
             targetPrice: target,
-            stopLoss: stop
+            stopLoss: stop,
+            suggestedEntry: currentPrice,
+            currentRR: 0,
+            entryStatus: 'invalid' as EntryStatus,
+            rejectionReason: 'mismatched_tp_sl',
+            explanation: `Target (RM ${target.toFixed(3)}) is below StopLoss (RM ${stop.toFixed(3)}). Plan is invalid.`
         };
     }
 
@@ -69,31 +84,31 @@ export const analyzeEntry = (
     }
 
     let status: EntryStatus = 'late_setup';
-    if (currentPrice <= stop) status = 'invalid';
+    let rejection = '';
+    
+    if (currentPrice <= stop) {
+        status = 'invalid';
+        rejection = 'price_below_sl';
+    }
     else if (currentRR >= idealRRThreshold) status = 'ideal';
     else if (currentRR >= minRRThreshold) status = 'acceptable';
-    else status = 'late_setup';
+    else {
+        status = 'late_setup';
+        rejection = 'low_rr';
+    }
 
     return {
         idealEntry,
         acceptableEntry,
         suggestedEntry: roundToTick(suggestedEntry, tick),
+        targetPrice: target,
+        stopLoss: stop,
         entryRangeLow: idealEntry, 
         entryRangeHigh: acceptableEntry,
         currentRR,
-        entryStatus: status
+        entryStatus: status,
+        rejectionReason: rejection
     };
-};
-
-export const getBursaTick = (price: number): number => {
-    if (price < 1) return 0.005; 
-    if (price < 10) return 0.01; 
-    if (price < 100) return 0.02;
-    return 0.10;
-};
-
-export const roundToTick = (val: number, tick: number): number => {
-    return Math.round(val / tick) * tick;
 };
 
 export const getExtensionPercent = (price: number, ma: number): number => {

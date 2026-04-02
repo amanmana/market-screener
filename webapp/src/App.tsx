@@ -696,18 +696,28 @@ const App = () => {
     }
   };
 
+  const hasAutoRefreshed = useRef(false);
+
   const loadWatchlist = async () => {
     try {
       const data = await fetchWatchlist();
       const list = data.results || [];
       setWatchlist(list);
       
-      // Auto-refresh items with missing signal data when entering Watchlist tab
-      if (activeTab === 'WATCHLIST') {
-        const needsUpdate = list.filter((p: any) => !p.signal || p.signal === 'HOLD' || p.signal === 'HOLDING' || p.signal === 'RESCAN');
-        if (needsUpdate.length > 0) {
-          needsUpdate.forEach((p: any) => handleRefreshWatchlistTicker(p));
-        }
+      // Auto-refresh all items when entering Watchlist tab for the first time
+      if (activeTab === 'WATCHLIST' && !hasAutoRefreshed.current && list.length > 0) {
+        hasAutoRefreshed.current = true;
+        const ids = list.map((p: any) => p.ticker);
+        let i = 0;
+        const next = () => {
+          if (i < ids.length) {
+            const item = list.find((p: any) => p.ticker === ids[i]);
+            if (item) handleRefreshWatchlistTicker(item);
+            i++;
+            setTimeout(next, 500);
+          }
+        };
+        next();
       }
     } catch (e) {
       console.error('Load Watchlist Error:', e);

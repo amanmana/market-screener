@@ -1,6 +1,6 @@
 import { Candle } from "../../types/market";
 import { SignalType, SignalResult } from "../../types/signals";
-import { calculateSMA, calculateStochastic, detectPivotLevels, findNearestResistance } from "../../utils/indicators";
+import { calculateSMA, calculateStochastic, detectStructuralPivots, findMeaningfulResistance } from "../../utils/indicators";
 import { calculateRR, getBursaTick, roundToTick, analyzeEntry } from "../../utils/trading";
 
 export function checkBuyR(candles: Candle[]): SignalResult {
@@ -50,25 +50,24 @@ export function checkBuyR(candles: Candle[]): SignalResult {
       };
   }
 
-  // 2. LEVELS
-  const { resistance, support, allResistance, allSupport } = detectPivotLevels(closes, highs, lows, 5);
-  const target = findNearestResistance(currentPrice, allResistance, resistance);
+  // 2. LEVELS - Structural Reversal Targets
+  const { target } = findMeaningfulResistance(currentPrice, highs, lows, 'REVERSAL');
   const tick = getBursaTick(currentPrice);
   
-  // Pivot low or recent minor low
-  const structuralLow = allSupport.length > 0 ? allSupport[allSupport.length - 1] : support;
-  const stopLoss = roundToTick(Math.min(structuralLow, support) * 0.985, tick); 
-
-  // VALIDATION: Target must be above current price by at least 1% to be actionable
-  if (target <= currentPrice * 1.01) {
-      return {
-        ...base,
-        targetPrice: target,
-        stopLoss,
-        entryStatus: 'late_setup', 
-        rejectionReason: 'price_at_resistance'
-      };
+  // 3. TARGET VALIDATION (Hard Rule 5)
+  if (!target) {
+     return {
+         ...base,
+         entryStatus: 'incomplete_trade_plan',
+         rejectionReason: 'no_meaningful_resistance_above',
+         explanation: 'No clear structural resistance found for reversal target.'
+     };
   }
+
+  // Pivot low for SL
+  const { support: sPivots } = detectStructuralPivots(highs, lows, 5);
+  const structuralLow = sPivots.length > 0 ? sPivots[sPivots.length - 1].price : currentPrice * 0.95;
+  const stopLoss = roundToTick(structuralLow * 0.985, tick);
 
   // BUY-R thresholds: ideal=1.8 (as updated), min=1.3
   const entry = analyzeEntry(currentPrice, target, stopLoss, 1.8, 1.3);
@@ -86,13 +85,17 @@ export function checkBuyR(candles: Candle[]): SignalResult {
     ...base,
     signal: SignalType.BUY_R,
     ...entry,
-    stopLoss,
+    entryStatus: entry.entryStatus,
     targetPrice: target,
-    rrRatio: calculateRR(entry.suggestedEntry || currentPrice, target, stopLoss),
-    supportLevel: support,
+    stopLoss: stopLoss,
+    currentRR: entry.currentRR,
+    rrRatio: entry.currentRR, 
+    supportLevel: structuralLow,
     resistanceLevel: target,
     confidence: 65,
-    explanation: `Early reversal. Stochastic recovery from oversold zone.`,
+    explanation: entry.entryStatus === 'late_setup'
+        ? `Early reversal, but resistance at RM ${target.toFixed(3)} is too close.`
+        : `Reversal setup toward structural resistance at RM ${target.toFixed(3)}.`,
     confirmed: true
   };
 }

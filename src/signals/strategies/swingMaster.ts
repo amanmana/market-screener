@@ -1,6 +1,6 @@
 import { Candle } from "../../types/market";
 import { SignalType, SignalResult } from "../../types/signals";
-import { calculateSMA, detectPivotLevels, findNearestResistance } from "../../utils/indicators";
+import { calculateSMA, detectStructuralPivots, findMeaningfulResistance } from "../../utils/indicators";
 import { calculateRR, getBursaTick, roundToTick, analyzeEntry } from "../../utils/trading";
 
 export function checkSwing(candles: Candle[]): SignalResult {
@@ -48,24 +48,24 @@ export function checkSwing(candles: Candle[]): SignalResult {
       return base;
   }
 
-  const { resistance, allResistance, allSupport } = detectPivotLevels(closes, highs, lows, 5);
-  const target = findNearestResistance(currentPrice, allResistance, resistance);
+  // 2. LEVELS - Structural Swing Targets (SMA50 bounce)
+  const { target } = findMeaningfulResistance(currentPrice, highs, lows, 'SWING');
   const tick = getBursaTick(currentPrice);
   
-  // Choose stop loss: either previous 5-day structural low OR SMA50 (whichever is closer/better)
-  const structuralLow = allSupport.length > 0 ? allSupport[allSupport.length - 1] : sma50;
-  const stopLoss = roundToTick(Math.min(structuralLow, sma50) * 0.985, tick); 
-
-  // VALIDATION: Target must be above current price by at least 1% to be actionable
-  if (target <= currentPrice * 1.01) {
-      return {
-        ...base,
-        targetPrice: target,
-        stopLoss,
-        entryStatus: 'late_setup', 
-        rejectionReason: 'price_at_resistance'
-      };
+  // 3. TARGET VALIDATION (Hard Rule 5)
+  if (!target) {
+     return {
+         ...base,
+         entryStatus: 'incomplete_trade_plan',
+         rejectionReason: 'no_meaningful_resistance_above',
+         explanation: 'No clear structural resistance found above the SMA50 support bounce.'
+     };
   }
+  
+  // Choose stop loss: previous structural low OR SMA50
+  const { support: sPivots } = detectStructuralPivots(highs, lows, 5);
+  const structuralLow = sPivots.length > 0 ? sPivots[sPivots.length - 1].price : sma50;
+  const stopLoss = roundToTick(Math.min(structuralLow, sma50) * 0.985, tick); 
 
   // RR thresholds: ideal=1.8 (short term), min=1.3
   const entry = analyzeEntry(currentPrice, target, stopLoss, 1.8, 1.3);
@@ -83,13 +83,17 @@ export function checkSwing(candles: Candle[]): SignalResult {
     ...base,
     signal: SignalType.SWING,
     ...entry,
-    stopLoss,
+    entryStatus: entry.entryStatus,
     targetPrice: target,
-    rrRatio: calculateRR(entry.suggestedEntry || currentPrice, target, stopLoss),
+    stopLoss: stopLoss,
+    currentRR: entry.currentRR,
+    rrRatio: entry.currentRR, // For backward compatibility
     supportLevel: sma50,
     resistanceLevel: target,
     confidence: 80,
-    explanation: `Institutional bounce from rising SMA50. Support at ${sma50.toFixed(3)}.`,
+    explanation: entry.entryStatus === 'late_setup'
+        ? `SMA50 bounce, but resistance at RM ${target.toFixed(3)} is too close.`
+        : `Institutional bounce from rising SMA50 toward RM ${target.toFixed(3)}.`,
     confirmed: true
   };
 }
