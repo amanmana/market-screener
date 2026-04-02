@@ -608,8 +608,8 @@ const MarketScreener = ({ isActive, watchlist, handleToggleWatchlist, riskProfil
           <table>
             <thead>
               <tr>
-                <th className="hide-mobile" style={{width:'22%'}}>SYMBOL</th>
-                <th className="hide-mobile" style={{width:'11%'}}>SIGNAL</th>
+                <th style={{width:'22%'}}>SYMBOL</th>
+                <th style={{width:'11%'}}>SIGNAL</th>
                 <th style={{width:'12%', textAlign:'center'}}>ACTION</th>
                 <th style={{width:'10%'}}>PRICE</th>
                 <th style={{width:'18%'}}>EP ZONE</th>
@@ -620,7 +620,7 @@ const MarketScreener = ({ isActive, watchlist, handleToggleWatchlist, riskProfil
               {signals.length > 0 ? (
                 signals.map((s, i) => (
                   <tr key={i}>
-                    <td className="hide-mobile">
+                    <td>
                       <div className="symbol-cell">
                         <div className="symbol-icon" style={{background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)', color: 'white'}}>{(s.name || s.ticker)[0]}</div>
                         <div style={{display:'flex', flexDirection:'column', gap: 2, flex: 1}}>
@@ -633,7 +633,7 @@ const MarketScreener = ({ isActive, watchlist, handleToggleWatchlist, riskProfil
                         </div>
                       </div>
                     </td>
-                    <td className="hide-mobile">
+                    <td>
                       <div style={{display:'flex', flexDirection: 'column', gap: 4}}>
                         <div style={{display:'flex', alignItems:'center', gap: 6, flexWrap: 'wrap'}}>
                           <span className={`signal-badge signal-${(s.signal || 'NONE').split('-')[0]}`}>{s.signal || 'NONE'}</span>
@@ -1082,8 +1082,8 @@ const App = () => {
             <table>
               <thead>
                 <tr>
-                  <th className="hide-mobile" style={{width:'18%'}}>SYMBOL</th>
-                  <th className="hide-mobile" style={{width:'12%'}}>SIGNAL</th>
+                  <th style={{width:'18%'}}>SYMBOL</th>
+                  <th style={{width:'12%'}}>SIGNAL</th>
                   <th style={{width:'12%', textAlign:'center'}}>ACTION</th>
                   <th style={{width:'13%'}}>WATCH PRICE</th>
                   <th style={{width:'20%'}}>TRADE PLAN</th>
@@ -1094,7 +1094,7 @@ const App = () => {
                 {watchlist.length > 0 ? (
                   watchlist.map((p: any) => (
                     <tr key={p.ticker} style={{borderLeft: '4px solid #6366f1', background: 'rgba(99,102,241,0.03)'}}>
-                      <td className="hide-mobile">
+                      <td>
                         <div className="symbol-cell">
                           <div className="symbol-icon" style={{background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)', color: 'white'}}>{(p.name || p.ticker)[0]}</div>
                           <div style={{display:'flex', flexDirection:'column', gap: 2}}>
@@ -1104,7 +1104,7 @@ const App = () => {
                           </div>
                         </div>
                       </td>
-                      <td className="hide-mobile">
+                      <td>
                         <div style={{display:'flex', flexDirection: 'column', gap: 4}}>
                            <div style={{display:'flex', alignItems:'center', gap: 6, flexWrap: 'wrap'}}>
                               {scanningStatus[p.ticker] ? (

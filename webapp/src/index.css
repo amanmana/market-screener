@@ -252,7 +252,7 @@ body {
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 600px; /* Force minimum width for horizontal scroll on mobile */
+  min-width: 800px; /* Force minimum width for horizontal scroll on mobile */
 }
 
 @media (max-width: 768px) {
