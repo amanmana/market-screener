@@ -111,6 +111,11 @@ export interface SignalResult {
   // NEW: Position Sizing & Risk Management
   sizing?: SizingMetadata | null;
   riskScore?: number;
+
+  // NEW: Trade Decision Engine
+  tradeDecision?: 'ENTER' | 'WAIT' | 'AVOID';
+  decisionReason?: string;
+  decisionConfidence?: 'HIGH' | 'MEDIUM' | 'LOW';
 }
 
 export interface SizingMetadata {

@@ -194,6 +194,36 @@ const TradePlanCell = ({ p, riskProfile }: any) => {
 
   return (
     <div style={{display:'flex', flexDirection:'column', gap: 3, minWidth: 140}}>
+
+      {/* TRADE DECISION BADGE — Primary action indicator */}
+      {p.tradeDecision && (() => {
+        const d = p.tradeDecision as 'ENTER' | 'WAIT' | 'AVOID';
+        const conf = p.decisionConfidence as string;
+        const colorMap = { ENTER: '#10b981', WAIT: '#f59e0b', AVOID: '#ef4444' };
+        const bgMap   = { ENTER: 'rgba(16,185,129,0.12)', WAIT: 'rgba(245,158,11,0.1)', AVOID: 'rgba(239,68,68,0.1)' };
+        const borderMap = { ENTER: 'rgba(16,185,129,0.35)', WAIT: 'rgba(245,158,11,0.3)', AVOID: 'rgba(239,68,68,0.3)' };
+        const glowMap  = { ENTER: '0 0 12px rgba(16,185,129,0.25)', WAIT: 'none', AVOID: 'none' };
+        const color = colorMap[d]; const bg = bgMap[d]; const border = borderMap[d];
+        return (
+          <div style={{
+            padding: '5px 10px', borderRadius: 8, background: bg,
+            border: `1px solid ${border}`, boxShadow: conf === 'HIGH' ? glowMap[d] : 'none',
+            marginBottom: 4
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 12, fontWeight: 900, color, letterSpacing: '0.5px' }}>{d}</span>
+              {conf && <span style={{ fontSize: 8, fontWeight: 700, color, opacity: 0.7,
+                background: `${color}20`, padding: '1px 5px', borderRadius: 3 }}>{conf}</span>}
+            </div>
+            {p.decisionReason && (
+              <div style={{ fontSize: 8.5, color: 'rgba(255,255,255,0.45)', marginTop: 2, lineHeight: 1.4 }}>
+                {p.decisionReason}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       <div style={{fontSize: 12, fontWeight: 800, color: '#facc15'}}>
          <span style={{opacity:0.6, fontSize: 9, marginRight: 4}}>ENTRY</span>
          {p.suggestedEntry > 0 

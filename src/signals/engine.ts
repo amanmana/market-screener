@@ -10,6 +10,7 @@ import { checkPreWarn } from "./strategies/preWarn";
 import { calculateLiquidity } from "../utils/liquidity";
 import { calculateHeikinAshi } from "../utils/indicators";
 import { calculatePositionSize } from "../utils/trading";
+import { computeTradeDecision } from "./decisionEngine";
 
 /**
  * NEW: Balanced Pyramid Ranking Model
@@ -185,6 +186,13 @@ export async function getLatestSignal(candles: Candle[], isLive: boolean = false
     const sizingConfig = { ...riskConfig, targetPrice: output.targetPrice };
     output.sizing = calculatePositionSize(output.suggestedEntry || current.close, output.stopLoss || 0, sizingConfig);
   }
+
+  // ── FINAL TRADE DECISION ENGINE ──────────────────────────────────────────
+  const decision = computeTradeDecision(output);
+  output.tradeDecision = decision.tradeDecision;
+  output.decisionReason = decision.decisionReason;
+  output.decisionConfidence = decision.decisionConfidence;
+  // ─────────────────────────────────────────────────────────────────────────
 
   output.confirmed = !isLive;
   output.previewOnly = isLive;
