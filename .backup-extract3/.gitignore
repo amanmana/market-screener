@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+webapp/node_modules/
+
+# Build output
+dist/
+webapp/dist/
+.wrangler/
+
+# Secrets - JANGAN sekali-kali commit ini!
+.dev.vars
+.env
+.env.local
+.env.production
+
+# OS & Editor
+.DS_Store
+.vscode/
+*.log
+
+# Wrangler cache
+.wrangler/

@@ -11,16 +11,6 @@ CREATE TABLE IF NOT EXISTS prices_mirror (
     UNIQUE(ticker, price_date)
 );
 
--- Table for fast stock lookup (Bursa Malaysia counters)
-CREATE TABLE IF NOT EXISTS bursa_counters (
-    ticker_full TEXT PRIMARY KEY,
-    company_name TEXT,
-    short_name TEXT,
-    shariah_status TEXT,
-    market TEXT,
-    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
-
 -- Table to track your active swing trades and portfolio
 CREATE TABLE IF NOT EXISTS swing_portfolio (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,4 +30,3 @@ CREATE TABLE IF NOT EXISTS swing_portfolio (
 -- Index for faster queries
 CREATE INDEX IF NOT EXISTS idx_prices_ticker ON prices_mirror(ticker);
 CREATE INDEX IF NOT EXISTS idx_prices_date ON prices_mirror(price_date);
-CREATE INDEX IF NOT EXISTS idx_bursa_name ON bursa_counters(company_name);

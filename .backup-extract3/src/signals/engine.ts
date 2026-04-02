@@ -8,7 +8,6 @@ import { checkSell } from "./strategies/sell";
 import { checkWarn } from "./strategies/warn";
 import { checkPreWarn } from "./strategies/preWarn";
 import { calculateLiquidity } from "../utils/liquidity";
-import { calculateHeikinAshi } from "../utils/indicators";
 
 /**
  * Calculates a proprietary setup score (0-100) based on multiple factors.
@@ -133,21 +132,6 @@ export async function getLatestSignal(candles: Candle[], isLive: boolean = false
   output.confirmed = !isLive;
   output.previewOnly = isLive;
   output.timestamp = current.price_date;
-
-  // 3. HEIKIN ASHI CONFIRMATION
-  const ha = calculateHeikinAshi(candles);
-  if (ha.length >= 2) {
-    const c1 = ha[ha.length - 1]; // Current
-    const c2 = ha[ha.length - 2]; // Previous
-    const c1Green = c1.close > c1.open;
-    const c2Green = c2.close > c2.open;
-    
-    if (c1Green && c2Green) output.haStatus = '2_GREEN';
-    else if (c1Green) output.haStatus = '1_GREEN';
-    else output.haStatus = 'RED';
-  } else {
-    output.haStatus = 'INSUFFICIENT';
-  }
   
   // Backward compatibility
   output.type = output.signal;

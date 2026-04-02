@@ -101,7 +101,6 @@ export interface SignalResult {
   // Legacy mappings
   type?: SignalType; 
   reason?: string;
-  haStatus?: '2_GREEN' | '1_GREEN' | 'RED' | 'INSUFFICIENT' | 'UNKNOWN';
 }
 
 export interface WatchlistBatchResponse {

@@ -1,6 +1,6 @@
-const API_BASE = window.location.hostname === 'localhost' 
-  ? 'http://localhost:8787/api' 
-  : 'https://market-screener.amanmana.workers.dev/api';
+// Backend: Cloudflare Workers (Production)
+// Tidak perlu jalankan wrangler dev secara lokal lagi
+const API_BASE = 'https://market-screener.amanmana.workers.dev/api';
 
 export async function fetchScreener(market: string = 'MYR', offset: number = 0, limit: number = 200) {
   const url = `${API_BASE}/screener/latest?market=${market}&offset=${offset}&limit=${limit}`;
@@ -11,18 +11,6 @@ export async function fetchScreener(market: string = 'MYR', offset: number = 0, 
 
 export async function fetchHealth() {
   const res = await fetch(`${API_BASE}/health`);
-  return res.json();
-}
-
-export async function fetchStockList() {
-  const res = await fetch(`${API_BASE}/market/list`);
-  if (!res.ok) throw new Error('Stock list fetch failed');
-  return res.json();
-}
-
-export async function fetchStarStockList() {
-  const res = await fetch(`${API_BASE}/market/sync-star`);
-  if (!res.ok) throw new Error('Star stock list fetch failed');
   return res.json();
 }
 

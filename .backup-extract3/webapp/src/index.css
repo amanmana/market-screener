@@ -447,15 +447,6 @@ tr:hover td {
   100% { color: inherit; }
 }
 
-.rotating {
-  animation: rotate 1s linear infinite;
-}
-
-@keyframes rotate {
-  from { transform: translateY(-50%) rotate(0deg); }
-  to { transform: translateY(-50%) rotate(360deg); }
-}
-
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;

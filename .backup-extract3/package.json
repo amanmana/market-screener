@@ -1,0 +1,23 @@
+{
+  "name": "market-screener",
+  "version": "1.0.0",
+  "description": "Clean stock screener engine using Cloudflare Workers and Supabase (Read-only).",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.7",
+    "itty-router": "^5.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240320.1",
+    "typescript": "^5.4.3",
+    "wrangler": "^3.34.2"
+  }
+}

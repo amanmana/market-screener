@@ -1,6 +1,6 @@
 import { getSupabase } from './lib/supabase';
 import { getLatestSignal } from './signals/engine';
-import { SignalType } from './types/signals';
+import { SignalType, SignalResult } from './types/signals';
 
 export default {
   async fetch(request: Request, env: { DB: D1Database; SUPABASE_URL: string; SUPABASE_ANON_KEY: string }, ctx: ExecutionContext): Promise<Response> {
@@ -13,266 +13,275 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
     try {
-      if (!env.DB) throw new Error('Database D1 Tidak Dijumpai! Perlu check wrangler.toml');
+      if (!env.DB) throw new Error('Database D1 NOT Found! Check wrangler.toml');
       const url = new URL(request.url);
-
-      // Health check
-      if (url.pathname === '/api/health') {
-        return new Response(JSON.stringify({ status: 'OK', message: 'Backend is ALIVE!' }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
-      }
-
       const supabase = getSupabase(env);
 
-      // ROUTE: Bulk Screener
-      if (url.pathname === '/api/screener/latest') {
-        const market = url.searchParams.get('market') || 'MYR';
-        const offset = parseInt(url.searchParams.get('offset') || '0');
-        const limit = parseInt(url.searchParams.get('limit') || '200');
+      // ROUTE: Full Stock List (For Search) - DIRECT FROM SUPABASE
+      if (url.pathname === '/api/market/list') {
+        const { data: stocks, error: supErr } = await supabase
+          .from('klse_stocks')
+          .select('ticker_full, company_name, short_name, shariah_status, market')
+          .in('market', ['MYR', 'BURSA'])
+          .order('company_name', { ascending: true });
 
-        // Get total count
-        let countQ = supabase.from('klse_stocks').select('*', { count: 'exact', head: true });
-        if (market === 'US') countQ = countQ.ilike('market', 'US%');
-        else countQ = countQ.eq('market', market);
-        const { count: totalC } = await countQ;
-
-        // Get stocks for this batch
-        let stockQ = supabase.from('klse_stocks').select('ticker_full, company_name, market');
-        if (market === 'US') stockQ = stockQ.ilike('market', 'US%');
-        else stockQ = stockQ.eq('market', market);
-        const { data: stocks, error: stockErr } = await stockQ.range(offset, offset + limit - 1);
-
-        if (stockErr) throw new Error(`Stock query error: ${stockErr.message}`);
-        if (!stocks || stocks.length === 0) {
-          return new Response(JSON.stringify({ results: [], total: totalC || 0 }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-          });
+        if (supErr) {
+          return new Response(JSON.stringify({ error: supErr.message }), { status: 500, headers: corsHeaders });
         }
 
-        // Get prices for all tickers in one batch
-        const tickers = stocks.map(s => s.ticker_full);
-        const { data: allPrices, error: priceErr } = await supabase
-          .from('klse_prices_daily')
-          .select('ticker_full, price_date, open, high, low, close, volume')
-          .in('ticker_full', tickers)
-          .order('price_date', { ascending: false })
-          .limit(tickers.length * 40);
-
-        if (priceErr) throw new Error(`Price query error: ${priceErr.message}`);
-
-        // Build price map
-        const priceMap = new Map<string, any[]>();
-        allPrices?.forEach(p => {
-          if (!priceMap.has(p.ticker_full)) priceMap.set(p.ticker_full, []);
-          priceMap.get(p.ticker_full)!.push(p);
-        });
-
-        // --- BULK D1 CACHE FETCH (CHUNKED TO PREVENT SQL PARAM LIMITS) ---
-        const d1Cache = new Map<string, any[]>();
-        
-        // Chunk tickers to batches of 90 to avoid D1 limit (max 100 vars)
-        const CHUNK_SIZE = 90;
-        for (let i = 0; i < tickers.length; i += CHUNK_SIZE) {
-          const chunk = tickers.slice(i, i + CHUNK_SIZE);
-          const { results: d1Rows } = await env.DB.prepare(
-            `SELECT ticker, open, high, low, close, volume, price_date FROM prices_mirror 
-             WHERE ticker IN (${chunk.map(() => '?').join(',')}) 
-             ORDER BY price_date DESC`
-          ).bind(...chunk).all();
-          
-          d1Rows?.forEach((r: any) => {
-            if (!d1Cache.has(r.ticker)) d1Cache.set(r.ticker, []);
-            if (d1Cache.get(r.ticker)!.length < 60) d1Cache.get(r.ticker)!.push(r);
-          });
-        }
-
-        // Run signal engine
-        const results = [];
-        const syncBatch: any[] = [];
-
-        for (const stock of stocks) {
-          let candles = d1Cache.get(stock.ticker_full) || [];
-          
-          if (candles.length < 40) {
-            candles = priceMap.get(stock.ticker_full) || [];
-            
-            if (candles.length > 0) {
-              const stmt = env.DB.prepare(
-                `INSERT OR REPLACE INTO prices_mirror (ticker, price_date, open, high, low, close, volume) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?)`
-              );
-              candles.forEach(c => {
-                syncBatch.push(stmt.bind(
-                  stock.ticker_full, 
-                  c.price_date, 
-                  Number(c.open || 0), 
-                  Number(c.high || 0), 
-                  Number(c.low || 0), 
-                  Number(c.close || 0), 
-                  Number(c.volume || 0)
-                ));
-              });
-            }
-          }
-
-          if (candles.length >= 20) {
-            const sig = await getLatestSignal([...candles].reverse());
-            if (sig.type !== SignalType.NONE) {
-              results.push({
-                ticker: stock.ticker_full,
-                name: stock.company_name,
-                signal: sig.type,
-                reason: sig.reason,
-                price: sig.price,
-                isCaution: sig.isCaution,
-                isBTST: sig.isBTST,
-                btstTarget: sig.btstTarget,
-                stopLoss: sig.stopLoss,
-                entryRangeLow: sig.entryRangeLow,
-                entryRangeHigh: sig.entryRangeHigh,
-              });
-            }
-          }
-        }
-
-        // Background Batch Sync (Safety limit 100 statements per batch)
-        if (syncBatch.length > 0) {
-          const chunks = [];
-          for (let i = 0; i < syncBatch.length; i += 100) {
-            chunks.push(env.DB.batch(syncBatch.slice(i, i + 100)));
-          }
-          ctx.waitUntil(Promise.all(chunks));
-        }
-
-        return new Response(JSON.stringify({ results, total: totalC || 0 }), {
+        return new Response(JSON.stringify({ results: stocks || [] }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
 
-      // ROUTE: Individual Quote (Quick Refresh)
+      // ROUTE: Mirror Supabase -> D1 (Comprehensive Sync)
+      if (url.pathname === '/api/market/sync-star') {
+        // 1. Fetch ALL from Supabase (Limit removed to ensure all counters like TENAGA are included)
+        const { data: stocks, error: supErr } = await supabase
+          .from('klse_stocks')
+          .select('ticker_full, company_name, short_name, shariah_status, market')
+          .in('market', ['MYR', 'BURSA']);
+
+        if (supErr || !stocks) throw new Error(`Supabase query error: ${supErr?.message}`);
+
+        // 2. Prepare D1 Statements
+        const statements: D1PreparedStatement[] = [];
+        for (const s of stocks) {
+          statements.push(
+            env.DB.prepare(`INSERT OR REPLACE INTO bursa_counters (ticker_full, company_name, short_name, shariah_status, market, updated_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`)
+                  .bind(s.ticker_full, s.company_name, s.short_name, s.shariah_status, s.market)
+          );
+        }
+
+        // 3. Batch Execute in D1
+        const BATCH_SIZE = 50;
+        for (let i = 0; i < statements.length; i += BATCH_SIZE) {
+          await env.DB.batch(statements.slice(i, i + BATCH_SIZE));
+        }
+
+        return new Response(JSON.stringify({ success: true, count: stocks.length }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      // ROUTE: Bulk Screener (Bursa Only)
+      if (url.pathname === '/api/screener/latest') {
+        const offset = parseInt(url.searchParams.get('offset') || '0');
+        const batchLimit = parseInt(url.searchParams.get('limit') || '200');
+
+        // 1. Get Stocks (Locked to MYR)
+        const { data: stocks, count: totalStocks, error: stockErr } = await supabase
+          .from('klse_stocks')
+          .select('ticker_full, company_name, market', { count: 'exact' })
+          .eq('market', 'MYR')
+          .range(offset, offset + batchLimit - 1);
+
+        if (stockErr || !stocks) throw new Error(`Stock query error: ${stockErr?.message}`);
+
+        // 2. Fetch History from Supabase AND Sync to D1
+        const tickers = stocks.map(s => s.ticker_full);
+        const dataCache = new Map<string, any[]>();
+        
+        // Fetch 120 candles per stock from Supabase
+        const { data: allHistory, error: historyErr } = await supabase
+          .from('klse_prices_daily')
+          .select('ticker_full, open, high, low, close, volume, price_date')
+          .in('ticker_full', tickers)
+          .order('price_date', { ascending: false });
+
+        if (historyErr) throw new Error(`History fetch error: ${historyErr.message}`);
+
+        // Group by ticker and prepare for D1 sync
+        const syncRows: any[] = [];
+        allHistory?.forEach((r: any) => {
+          if (!dataCache.has(r.ticker_full)) dataCache.set(r.ticker_full, []);
+          if (dataCache.get(r.ticker_full)!.length < 120) {
+            dataCache.get(r.ticker_full)!.push(r);
+            syncRows.push(r);
+          }
+        });
+
+        // Background Sync to D1 (Mirroring)
+        if (syncRows.length > 0) {
+          const stmt = env.DB.prepare(`INSERT OR REPLACE INTO prices_mirror (ticker, price_date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)`);
+          ctx.waitUntil(env.DB.batch(syncRows.map(r => stmt.bind(r.ticker_full, r.price_date, r.open, r.high, r.low, r.close, r.volume))));
+        }
+
+        // 3. Process Batch
+        const finalResults: any[] = [];
+        for (const stock of stocks) {
+          const history = dataCache.get(stock.ticker_full) || [];
+          const sig = await getLatestSignal([...history].reverse(), false);
+          
+          // MOVED: No more early exit for filter reasons. Deliver everything so the UI date is accurate.
+          finalResults.push({
+            ticker: stock.ticker_full,
+            name: stock.company_name,
+            ...sig,
+            signal: sig.signal,
+            reason: sig.explanation || sig.rejectionReason,
+            targetPrice: sig.targetPrice,
+            stopLoss: sig.stopLoss,
+            avgVolumeRM: sig.avgTradedValue20 // Map the correct field
+          });
+        }
+
+        // 4. Default Result Ordering: Rank A -> D, then Score Desc
+        finalResults.sort((a, b) => {
+            const rankMap: Record<string, number> = { 'A': 1, 'B': 2, 'C': 3, 'D': 4 };
+            const rA = rankMap[a.setupRank || 'D'];
+            const rB = rankMap[b.setupRank || 'D'];
+            if (rA !== rB) return rA - rB;
+            return (b.setupScore || 0) - (a.setupScore || 0);
+        });
+
+        return new Response(JSON.stringify({ results: finalResults, total: totalStocks || 0 }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      // ROUTE: Individual Refresh (LIVE PREVIEW)
       if (url.pathname.startsWith('/api/market/quote/')) {
         const ticker = url.pathname.split('/').pop();
         if (!ticker) throw new Error('Ticker missing');
 
-        // Try D1 Cache first
-        const { results: d1Rows } = await env.DB.prepare(
-          `SELECT open, high, low, close, volume, price_date FROM prices_mirror 
-           WHERE ticker = ? ORDER BY price_date DESC LIMIT 60`
-        ).bind(ticker).all();
+        // 1. Primary Source: Supabase (Fastest for 1100+ counters)
+        let { data: supaCandles, error: supaErr } = await supabase
+          .from('klse_prices_daily')
+          .select('open, high, low, close, volume, price_date')
+          .eq('ticker_full', ticker)
+          .order('price_date', { ascending: false })
+          .limit(100);
 
-        let candles: any[] = d1Rows || [];
+        let candles: any[] = supaCandles || [];
 
-        if (candles.length < 40) {
-          const { data: history, error: hErr } = await supabase
-            .from('klse_prices_daily')
-            .select('*')
-            .eq('ticker_full', ticker)
-            .order('price_date', { ascending: false })
-            .limit(40);
-
-          if (hErr) throw new Error(hErr.message);
-          candles = history || [];
-          
-        // Sync in background
-        if (candles.length > 0) {
+        // 2. Fallback Source: Yahoo Finance History (High fidelity for missing data)
+        if (candles.length < 60) {
           try {
-            const stmt = env.DB.prepare(`INSERT OR REPLACE INTO prices_mirror (ticker, price_date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)`);
-            ctx.waitUntil(env.DB.batch(candles.map(c => stmt.bind(ticker, c.price_date, Number(c.open), Number(c.high), Number(c.low), Number(c.close), Number(c.volume)))));
+            console.log(`Insufficient history for ${ticker} in Supabase (${candles.length}). Falling back to Yahoo.`);
+            const yfHistory = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=6mo`, {
+              headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' }
+            });
+            const yfData: any = await yfHistory.json();
+            const result = yfData?.chart?.result?.[0];
+            if (result && result.timestamp) {
+              const quotes = result.indicators.quote[0];
+              const timestamps = result.timestamp;
+              const formattedYf = timestamps.map((ts: number, i: number) => ({
+                open: quotes.open[i] || quotes.close[i],
+                high: quotes.high[i] || quotes.close[i],
+                low: quotes.low[i] || quotes.close[i],
+                close: quotes.close[i],
+                volume: quotes.volume[i] || 0,
+                price_date: new Date(ts * 1000).toISOString().split('T')[0]
+              })).filter((c: any) => c.close != null).reverse();
+              
+              if (formattedYf.length >= 60) {
+                candles = formattedYf;
+                // Optional: Cache back to D1 for extremely fast future access
+                const stmt = env.DB.prepare(`INSERT OR REPLACE INTO prices_mirror (ticker, price_date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)`);
+                ctx.waitUntil(env.DB.batch(candles.slice(0, 100).map(c => stmt.bind(ticker, c.price_date, c.open, c.high, c.low, c.close, c.volume))));
+              }
+            }
           } catch (e) {
-            console.error('D1 Sync Error:', e);
+            console.error('Yahoo History Fallback Error:', e);
           }
         }
+
+        if (candles.length < 60) {
+          throw new Error(`Insufficient history for ${ticker} (Supabase: ${supaCandles?.length || 0}, Yahoo: failed)`);
         }
 
-        if (candles.length === 0) throw new Error(`No history for ${ticker}`);
-
-        let livePrice = candles[0].close;
+        // 3. Live Price (1-min precision for Intra-day signals)
+        let live = { close: candles[0].close, high: candles[0].high, low: candles[0].low };
         try {
-          const yf = await fetch(
-            `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1m&range=1d`,
-            { headers: { 'User-Agent': 'Mozilla/5.0' } }
-          );
-          if (yf.ok) {
-            const yd: any = await yf.json();
-            const meta = yd?.chart?.result?.[0]?.meta;
-            if (meta?.regularMarketPrice) livePrice = meta.regularMarketPrice;
+          const yfLive = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1m&range=1d`, { 
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' } 
+          });
+          const yd: any = await yfLive.json();
+          const meta = yd?.chart?.result?.[0]?.meta;
+          if (meta?.regularMarketPrice) {
+            live.close = meta.regularMarketPrice;
+            if (meta.regularMarketDayHigh) live.high = Math.max(meta.regularMarketDayHigh, live.close);
+            if (meta.regularMarketDayLow) live.low = Math.min(meta.regularMarketDayLow, live.close);
           }
-        } catch (_) {}
+        } catch (e) {
+            console.warn('Yahoo Live Price Error:', e);
+        }
 
-        const virtual = { ...candles[0], close: livePrice, price_date: new Date().toISOString() };
-        const sig = await getLatestSignal([virtual, ...candles.slice(1)].reverse());
+        // 3. Merge Live Data (Virtual Candle)
+        const virtual = { 
+            ticker_full: ticker,
+            open: Number(candles[0].open),
+            high: Number(live.high),
+            low: Number(live.low),
+            close: Number(live.close),
+            volume: Number(candles[0].volume),
+            price_date: new Date().toISOString() 
+        };
+        
+        // 4. Run Analysis Engine
+        // Convert supaCandles to have ticker_full for the engine
+        const engineHistory = candles.map(c => ({ ...c, ticker_full: ticker }));
+        const sig = await getLatestSignal([virtual, ...engineHistory.slice(1)].reverse(), true);
+
+        // 5. Calculate Change
+        const prevClose = candles[0].close;
+        const change = live.close - prevClose;
+        const changePercent = (change / prevClose) * 100;
+
+        // 6. Get Company Name
+        const { data: stockInfo } = await supabase
+          .from('klse_stocks')
+          .select('company_name')
+          .eq('ticker_full', ticker)
+          .single();
 
         return new Response(JSON.stringify({ 
-          ticker, 
-          price: livePrice, 
-          signal: sig.type,
-          isCaution: sig.isCaution, 
-          reason: sig.reason,
-          entryRangeLow: sig.entryRangeLow,
-          entryRangeHigh: sig.entryRangeHigh,
-          isBTST: sig.isBTST,
-          btstTarget: sig.btstTarget,
-          stopLoss: sig.stopLoss
+            ticker, 
+            name: stockInfo?.company_name || ticker,
+            price: live.close, 
+            change,
+            changePercent,
+            ...sig, 
+            avgVolumeRM: sig.avgTradedValue20, // Map the correct field
+            signal: sig.signal || sig.type, 
+            reason: sig.explanation || sig.reason 
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
 
-      // ROUTE: Add to Portfolio
+      // ROUTE: Portfolio Management
       if (url.pathname === '/api/portfolio/add' && request.method === 'POST') {
-        const payload: any = await request.json();
-        
-        // Prevent generic duplicate tickers 
-        const existing = await env.DB.prepare(`SELECT id FROM swing_portfolio WHERE ticker = ?`).bind(payload.ticker).first();
-        if (existing) {
-          // Update the existing row
-          await env.DB.prepare(
-             `UPDATE swing_portfolio SET entry_price=?, target_price=?, stop_loss=?, status='OPEN' WHERE ticker=?`
-          ).bind(
-            payload.entry_price ?? null, 
-            payload.target_price ?? null, 
-            payload.stop_loss ?? null, 
-            payload.ticker
-          ).run();
-        } else {
-          // Insert a new row
-          await env.DB.prepare(
-            `INSERT INTO swing_portfolio (ticker, name, entry_price, target_price, stop_loss, status) 
-             VALUES (?, ?, ?, ?, ?, ?)`
-          ).bind(
-            payload.ticker, 
-            payload.name ?? '', 
-            payload.entry_price ?? null, 
-            payload.target_price ?? null, 
-            payload.stop_loss ?? null, 
-            'OPEN'
-          ).run();
-        }
-
-        return new Response(JSON.stringify({ success: true }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
+        const p: any = await request.json();
+        // Use ticker as unique key to prevent multiple entries (Triple GENP bug fix)
+        await env.DB.prepare(
+          `INSERT OR REPLACE INTO swing_portfolio (
+            ticker, name, entry_price, target_price, stop_loss, 
+            signal, reason, status
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 'OPEN')`
+        ).bind(
+          p.ticker, 
+          p.name || '', 
+          p.suggestedEntry || p.price || p.entry_price || 0, 
+          p.targetPrice || p.target_price || 0, 
+          p.stopLoss || p.stop_loss || 0, 
+          p.signal || 'HOLD', 
+          p.explanation || p.reason || ''
+        ).run();
+        return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
       }
 
-      // ROUTE: Remove from Portfolio
       if (url.pathname === '/api/portfolio/remove' && request.method === 'POST') {
-        const payload: any = await request.json();
-        
-        await env.DB.prepare(`DELETE FROM swing_portfolio WHERE ticker = ?`).bind(payload.ticker).run();
-        
-        return new Response(JSON.stringify({ success: true }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
+        const { ticker } = (await request.json()) as any;
+        await env.DB.prepare(`DELETE FROM swing_portfolio WHERE ticker = ?`).bind(ticker).run();
+        return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
       }
 
-      // ROUTE: List Portfolio
       if (url.pathname === '/api/portfolio/list') {
-        const { results } = await env.DB.prepare(
-          `SELECT * FROM swing_portfolio ORDER BY entry_date DESC`
-        ).all();
-
-        return new Response(JSON.stringify({ results }), {
+        const { results } = await env.DB.prepare(`SELECT * FROM swing_portfolio ORDER BY entry_date DESC`).all();
+        return new Response(JSON.stringify({ results: (results || []).map((r: any) => ({ ...r, isBTST: r.is_btst === 1 })) }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
@@ -280,15 +289,7 @@ export default {
       return new Response('Not Found', { status: 404, headers: corsHeaders });
 
     } catch (err: any) {
-      console.error('SERVER_ERROR:', err);
-      return new Response(JSON.stringify({ 
-        error: err.message,
-        stack: err.stack,
-        hint: 'Sila pastikan D1 database anda di-binding dengan nama DB'
-      }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+      return new Response(JSON.stringify({ error: err.message, stack: err.stack }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
   },
 };
