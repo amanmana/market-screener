@@ -11,6 +11,7 @@ import { calculateLiquidity } from "../utils/liquidity";
 import { calculateHeikinAshi } from "../utils/indicators";
 import { calculatePositionSize } from "../utils/trading";
 import { computeTradeDecision } from "./decisionEngine";
+import { evaluateMarketContext } from "./marketContext";
 
 /**
  * NEW: Balanced Pyramid Ranking Model
@@ -174,6 +175,11 @@ export async function getLatestSignal(candles: Candle[], isLive: boolean = false
 
   // Add liquidity metadata
   Object.assign(output, liq);
+
+  // ── MARKET CONTEXT FILTER ──
+  if (output.signal !== SignalType.NONE && output.signal !== SignalType.SELL && output.signal !== SignalType.WARN && output.signal !== SignalType.PRE_WARN) {
+      output.context = evaluateMarketContext(candles, output.signal as SignalType);
+  }
 
   // Enhance with Balanced Pyramid Ranking & Sizing
   const { score, breakdown } = calculateSetupScore(output);

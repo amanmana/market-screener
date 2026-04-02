@@ -116,6 +116,20 @@ export interface SignalResult {
   tradeDecision?: 'ENTER' | 'WAIT' | 'AVOID';
   decisionReason?: string;
   decisionConfidence?: 'HIGH' | 'MEDIUM' | 'LOW';
+
+  // NEW: Market Context analysis
+  context?: MarketContextInfo;
+}
+
+export type TrendBias = 'bullish' | 'neutral' | 'bearish';
+export type StructureState = 'healthy_trend' | 'pullback_in_trend' | 'early_reversal' | 'weak_rebound' | 'damaged_structure' | 'downtrend' | 'consolidation';
+export type MarketContextQuality = 'favorable' | 'mixed' | 'unfavorable';
+
+export interface MarketContextInfo {
+  trendBias: TrendBias;
+  structureState: StructureState;
+  marketContext: MarketContextQuality;
+  contextWarnings: string[];
 }
 
 export interface SizingMetadata {

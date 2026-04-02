@@ -53,6 +53,7 @@ export function computeTradeDecision(signal: SignalResult): DecisionOutput {
   const score = signal.setupScore || 0;
   const liquidityPass = signal.liquidityPass === true;
   const exitRisk = signal.exitRisk || 'HIGH';
+  const ctx = signal.context;
 
   // ─── TIER 1: HARD AVOID (Immediate disqualifiers) ──────────────────────────
 
@@ -92,6 +93,14 @@ export function computeTradeDecision(signal: SignalResult): DecisionOutput {
   // 1e. Rank D always AVOID
   if (rank === 'D') {
     return avoid('Low-priority setup (Rank D) — not worth the capital risk', 'HIGH');
+  }
+
+  // ─── TIER 1.5: MARKET CONTEXT AVOID ────────────────────────────────────────
+  if (ctx && ctx.marketContext === 'unfavorable') {
+    return avoid(
+      `Unfavorable Context: ${ctx.contextWarnings[0] || 'Chart structure is bearish or damaged'}`,
+      'HIGH'
+    );
   }
 
   // ─── TIER 2: CONDITIONAL AVOID (secondary safety rules) ───────────────────
@@ -154,6 +163,14 @@ export function computeTradeDecision(signal: SignalResult): DecisionOutput {
   if (!ACTION_STATUSES.has(status)) {
     // Catch-all for any other status that escaped above rules
     return wait('Setup present but entry conditions are not yet firmly met', 'LOW');
+  }
+
+  // ─── MARKET CONTEXT WAIT OVERRIDE ───
+  if (ctx && ctx.marketContext === 'mixed') {
+     return wait(
+       `Mixed Context: ${ctx.contextWarnings[0] || 'Awaiting stronger structural confirmation'}`,
+       'MEDIUM'
+     );
   }
 
   // 4a. STRONG ENTER: Rank A, RR >= 2.0, liquid, actionable
