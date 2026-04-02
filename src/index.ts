@@ -275,19 +275,24 @@ export default {
           `INSERT OR REPLACE INTO swing_portfolio (
             ticker, name, entry_price, target_price, stop_loss, 
             signal, reason, status,
-            trade_decision, decision_confidence, decision_reason
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?, ?)`
+            trade_decision, decision_confidence, decision_reason,
+            entry_range_low, entry_range_high, rr_ratio, entry_status
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?, ?, ?, ?, ?, ?)`
         ).bind(
           p.ticker, 
           p.name || '', 
-          p.suggestedEntry || p.price || p.entry_price || 0, 
+          p.suggestedEntry || p.suggested_entry || p.price || p.entry_price || 0, 
           p.targetPrice || p.target_price || 0, 
           p.stopLoss || p.stop_loss || 0, 
           p.signal || 'HOLD', 
           p.explanation || p.reason || '',
-          p.tradeDecision || null,
-          p.decisionConfidence || null,
-          p.decisionReason || null
+          p.tradeDecision || p.trade_decision || null,
+          p.decisionConfidence || p.decision_confidence || null,
+          p.decisionReason || p.decision_reason || null,
+          p.entryRangeLow || p.entry_range_low || 0,
+          p.entryRangeHigh || p.entry_range_high || 0,
+          p.currentRR || p.rrRatio || p.rr_ratio || 0,
+          p.entryStatus || p.entry_status || null
         ).run();
         return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
       }
@@ -306,7 +311,11 @@ export default {
              isBTST: r.is_btst === 1,
              tradeDecision: r.trade_decision || r.tradeDecision,
              decisionConfidence: r.decision_confidence || r.decisionConfidence,
-             decisionReason: r.decision_reason || r.decisionReason
+             decisionReason: r.decision_reason || r.decisionReason,
+             entryRangeLow: r.entry_range_low || r.entryRangeLow,
+             entryRangeHigh: r.entry_range_high || r.entryRangeHigh,
+             rrRatio: r.rr_ratio || r.rrRatio,
+             entryStatus: r.entry_status || r.entryStatus
            })) 
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
