@@ -125,6 +125,7 @@ export default {
           finalResults.push({
             ticker: stock.ticker_full,
             name: stock.company_name,
+            timestamp: history.length > 0 ? history[0].price_date : null,
             ...sig,
             signal: sig.signal,
             reason: sig.explanation || sig.rejectionReason,
