@@ -262,10 +262,10 @@ const TradePlanCell = ({ p, riskProfile }: any) => {
 
       {/* POSITION SIZING — calculated live from current riskProfile */}
       {(() => {
-        const entry = p.suggestedEntry || p.entryRangeLow || p.price || 0;
+        const entry = p.suggestedEntry || p.suggested_entry || p.entryRangeLow || p.entry_range_low || p.price || p.current_price || 0;
         const sl = p.stopLoss || p.stop_loss || 0;
         const tp = p.targetPrice || p.target_price || 0;
-        const isActionable = ['premium_actionable','actionable','ideal','acceptable'].includes(statusRaw);
+        const isActionable = ['premium_actionable','actionable','ideal','acceptable'].includes(statusRaw) || p.tradeDecision === 'ENTER';
         if (!isActionable || !entry || !sl || p.tradeDecision === 'AVOID') return null;
         const sz = calcSizing(entry, sl, tp, riskProfile);
         if (!sz) return null;
