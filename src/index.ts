@@ -274,8 +274,9 @@ export default {
         await env.DB.prepare(
           `INSERT OR REPLACE INTO swing_portfolio (
             ticker, name, entry_price, target_price, stop_loss, 
-            signal, reason, status
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, 'OPEN')`
+            signal, reason, status,
+            trade_decision, decision_confidence, decision_reason
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?, ?)`
         ).bind(
           p.ticker, 
           p.name || '', 
@@ -283,7 +284,10 @@ export default {
           p.targetPrice || p.target_price || 0, 
           p.stopLoss || p.stop_loss || 0, 
           p.signal || 'HOLD', 
-          p.explanation || p.reason || ''
+          p.explanation || p.reason || '',
+          p.tradeDecision || null,
+          p.decisionConfidence || null,
+          p.decisionReason || null
         ).run();
         return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
       }
@@ -296,7 +300,15 @@ export default {
 
       if (url.pathname === '/api/portfolio/list') {
         const { results } = await env.DB.prepare(`SELECT * FROM swing_portfolio ORDER BY entry_date DESC`).all();
-        return new Response(JSON.stringify({ results: (results || []).map((r: any) => ({ ...r, isBTST: r.is_btst === 1 })) }), {
+        return new Response(JSON.stringify({ 
+           results: (results || []).map((r: any) => ({ 
+             ...r, 
+             isBTST: r.is_btst === 1,
+             tradeDecision: r.trade_decision || r.tradeDecision,
+             decisionConfidence: r.decision_confidence || r.decisionConfidence,
+             decisionReason: r.decision_reason || r.decisionReason
+           })) 
+        }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
