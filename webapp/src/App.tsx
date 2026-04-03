@@ -330,6 +330,7 @@ const MarketScreener = ({ isActive, watchlist, handleToggleWatchlist, riskProfil
   const [lastUpdated, setLastUpdated] = useState<string | null>(() => {
     return localStorage.getItem(`last_updated_${market}`);
   });
+  const maxTimestampRef = useRef<number>(0);
 
   const isScanning = useRef(false);
   const autoScanActive = useRef(false);
@@ -396,10 +397,19 @@ const MarketScreener = ({ isActive, watchlist, handleToggleWatchlist, riskProfil
       offsetRef.current = newOffset;
       
       if (data && data.results && data.results.length > 0) {
-        // Update last updated timestamp from the first result if available
-        const latestDate = data.results[0].timestamp;
-        if (latestDate) {
-          const dateObj = new Date(latestDate);
+        if (offset === 0) maxTimestampRef.current = 0;
+        
+        let batchMaxTime = 0;
+        data.results.forEach((r: any) => {
+          if (r.timestamp) {
+            const t = new Date(r.timestamp).getTime();
+            if (t > batchMaxTime) batchMaxTime = t;
+          }
+        });
+
+        if (batchMaxTime > maxTimestampRef.current) {
+          maxTimestampRef.current = batchMaxTime;
+          const dateObj = new Date(batchMaxTime);
           const formatted = dateObj.toLocaleDateString('en-GB', { 
             day: '2-digit', month: 'short', year: 'numeric',
             hour: '2-digit', minute: '2-digit'
